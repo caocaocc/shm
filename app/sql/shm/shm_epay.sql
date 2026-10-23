@@ -1,4 +1,4 @@
--- Merge this DDL into fresh-install schema and the release migration.
+-- Epay order audit for fresh installations and upgrades.
 -- Signing keys remain in mounted runtime secret files, never in this table.
 CREATE TABLE IF NOT EXISTS epay_orders (
   out_trade_no varchar(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,

@@ -98,6 +98,110 @@ state $routes //= {
         },
     },
 },
+'/user/service/consumption' => {
+    swagger => { tags => '用户服务' },
+    GET => {
+        controller => 'Consumption',
+        method => 'snapshot_for_api',
+        params => {
+            user_service_id => { type => 'integer', required => 1, min => 1 },
+            withdraw_id => { type => 'integer', min => 1 },
+        },
+        swagger => { summary => '查看预付套餐消费比例和可退款余额' },
+    },
+},
+'/admin/consumption' => {
+    swagger => { tags => '计量' },
+    GET => {
+        controller => 'Consumption',
+        method => 'snapshot_for_api',
+        params => {
+            user_service_id => { type => 'integer', required => 1, min => 1 },
+            withdraw_id => { type => 'integer', min => 1 },
+        },
+        swagger => { summary => '查看指定计费周期的消费快照' },
+    },
+},
+'/admin/consumption/generation' => {
+    swagger => { tags => '计量' },
+    POST => {
+        controller => 'Consumption',
+        method => 'admin_start_generation',
+        params => {
+            user_service_id => { type => 'integer', required => 1, min => 1 },
+            withdraw_id => { type => 'integer', required => 1, min => 1 },
+            meter => { type => 'string', required => 1, max_length => 64 },
+            generation => { type => 'string', required => 1, max_length => 128 },
+            record_id => { type => 'string', required => 1, max_length => 128 },
+            baseline => { type => 'string', required => 1, max_length => 39, pattern => '^\d{1,26}(?:\.\d{1,12})?$' },
+            observed_at => { type => 'string', pattern => '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$' },
+        },
+        swagger => { summary => '提交计量代次的初始累计读数' },
+    },
+},
+'/admin/consumption/reading' => {
+    swagger => { tags => '计量' },
+    POST => {
+        controller => 'Consumption',
+        method => 'admin_ingest',
+        params => {
+            user_service_id => { type => 'integer', required => 1, min => 1 },
+            withdraw_id => { type => 'integer', required => 1, min => 1 },
+            meter => { type => 'string', required => 1, max_length => 64 },
+            generation => { type => 'string', required => 1, max_length => 128 },
+            record_id => { type => 'string', required => 1, max_length => 128 },
+            cumulative => { type => 'string', required => 1, max_length => 39, pattern => '^\d{1,26}(?:\.\d{1,12})?$' },
+            observed_at => { type => 'string', pattern => '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$' },
+        },
+        swagger => { summary => '提交通用计量的累计读数' },
+    },
+},
+'/admin/consumption/finalize' => {
+    swagger => { tags => '计量' },
+    POST => {
+        controller => 'Consumption',
+        method => 'admin_finalize',
+        params => {
+            user_service_id => { type => 'integer', required => 1, min => 1 },
+            withdraw_id => { type => 'integer', required => 1, min => 1 },
+            cutoff => { type => 'string', required => 1, pattern => '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$' },
+        },
+        swagger => { summary => '外部资源停止且读数完整后固定结算截止点' },
+    },
+},
+'/user/epay/order' => {
+    swagger => { tags => '支付' },
+    GET => {
+        controller => 'Epay',
+        method => 'status',
+        params => {
+            out_trade_no => { type => 'string', required => 1, max_length => 64, pattern => '^[A-Za-z0-9_-]+$' },
+        },
+        swagger => { summary => '查询本人的易支付充值订单状态' },
+    },
+    POST => {
+        controller => 'Epay',
+        method => 'create_order',
+        no_dry_run => 1,
+        params => {
+            amount => { type => 'string', required => 1, max_length => 11, pattern => '^\d{1,8}(?:\.\d{1,2})?$' },
+            ps => { type => 'string', max_length => 64, pattern => '^[A-Za-z0-9_-]+$' },
+        },
+        swagger => { summary => '创建人民币充值订单并获取支付入口' },
+    },
+},
+route_methods(['/user/epay/reconcile', '/admin/epay/reconcile'], {
+    swagger => { tags => '支付' },
+    POST => {
+        controller => 'Epay',
+        method => 'reconcile',
+        no_dry_run => 1,
+        params => {
+            out_trade_no => { type => 'string', required => 1, max_length => 64, pattern => '^[A-Za-z0-9_-]+$' },
+        },
+        swagger => { summary => '向易支付查单并补齐已付款订单' },
+    },
+}),
 '/user/captcha' => {
     swagger => { tags => '验证码' },
     GET => {
@@ -2462,6 +2566,14 @@ if ( my $p = $router->match( sprintf("%s:%s", $ENV{REQUEST_METHOD}, $uri )) ) {
         %in,
         admin => $admin_mode,
     );
+
+    # Payment calls durably commit and may create an external gateway order.
+    # A generic rollback preview cannot undo either effect.
+    if ( $p->{no_dry_run} && $in{dry_run} ) {
+        print_header( status => 400 );
+        print_json({ status => 400, error => '支付接口不支持 dry_run' });
+        exit 0;
+    }
 
     # User-switching (impersonation) is only allowed for a genuinely
     # authenticated admin (session/login/basic-auth). Routes that force a
