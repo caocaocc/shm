@@ -1,6 +1,7 @@
 package Core::USObject;
 
 use v5.14;
+use utf8;
 use parent 'Core::Base';
 use Core::Base;
 use Core::Const;
@@ -222,6 +223,14 @@ sub can_delete {
 }
 
 sub delete {
+    my $self = shift;
+    my @args = @_;
+    my $consumption = get_service('Consumption');
+    return $consumption->lifecycle($self, sub { $self->_delete_service(@args) }) if $self->id && $consumption->period_for($self);
+    return $self->_delete_service(@args);
+}
+
+sub _delete_service {
     my $self = shift;
     my %args = (
         force => 0,
@@ -752,16 +761,34 @@ sub make_expired {
 
 sub finish {
     my $self = shift;
+    my @args = @_;
+    my $consumption = get_service('Consumption');
+    return $consumption->lifecycle($self, sub { $self->_finish_service(@args) }) if $self->id && $consumption->period_for($self);
+    return $self->_finish_service(@args);
+}
+
+sub _finish_service {
+    my $self = shift;
     my %args = (
         money_back => 1,
         get_smart_args( @_ ),
     );
 
     return 0 if $self->get_status ne STATUS_ACTIVE;
+    my $consumption = get_service('Consumption');
+    my $period = $consumption->period_for($self);
+    if ($period && !defined($period->{closed_epoch}) && $self->has_expired) {
+        $consumption->refund($self, now, $args{money_back} ? () : (waive_refund => 1));
+        return 1;
+    }
     return 0 if $self->has_expired;
 
     if ( $self->make_expired ) {
-        $self->money_back if $args{money_back};
+        if ($period) {
+            $consumption->refund($self, $self->get_expire, $args{money_back} ? () : (waive_refund => 1));
+        } else {
+            $self->money_back if $args{money_back};
+        }
         return 1;
     }
 
@@ -960,6 +987,14 @@ sub api_set {
 
 sub change {
     my $self = shift;
+    my @args = @_;
+    my $consumption = get_service('Consumption');
+    return $consumption->lifecycle($self, sub { $self->_change_service(@args) }) if $self->id && $consumption->period_for($self);
+    return $self->_change_service(@args);
+}
+
+sub _change_service {
+    my $self = shift;
     my %args = (
         service_id => undef,
         finish_active => 1,
@@ -1034,6 +1069,12 @@ sub create {
     my $service = get_service('service', _id => $args{service_id} );
     unless( $service ) {
         report->add_error('service not exists:', $args{service_id} );
+        return undef;
+    }
+
+    if (defined $service->config->{consumption} && $args{end_date}) {
+        report->status(400);
+        report->add_error('消费套餐必须使用套餐期间，不支持自定义 end_date');
         return undef;
     }
 
@@ -1187,6 +1228,11 @@ sub add_period_by_money {
     return undef if $money <= 0;
 
     return undef unless $self->withdraw;
+    if (get_service('Consumption')->period_for($self)) {
+        report->status(409);
+        report->add_error('已冻结的消费期间不能追加时长，请购买新的期间');
+        return undef;
+    }
     my %wd = $self->withdraw->get;
 
     my $cost = round( $wd{cost} - $wd{cost} * $wd{discount} / 100 );
@@ -1218,6 +1264,11 @@ sub add_period_by_money {
     $self->make_commands_by_event( EVENT_PROLONGATE );
 
     return 1;
+}
+
+sub consumption_snapshot {
+    my $self = shift;
+    return get_service('Consumption')->snapshot_for_api(user_service_id => $self->id, @_);
 }
 
 sub cleanup {

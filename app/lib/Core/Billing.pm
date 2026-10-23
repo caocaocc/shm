@@ -1,6 +1,7 @@
 package Core::Billing;
 
 use v5.14;
+use utf8;
 
 use base qw(
     Core::Pay
@@ -26,6 +27,48 @@ use Core::System::ServiceManager qw( get_service logger );
 
 use Core::Billing::Honest;
 use Core::Billing::Simpler;
+
+sub consumption_transaction {
+    my ($self, $code) = @_;
+    my $enabled = defined $self->service->config->{consumption};
+    if (!$enabled && $self->get_next && $self->get_next > 0) {
+        my $next = get_service('service', _id => $self->get_next);
+        $enabled = $next && defined $next->config->{consumption};
+    }
+    return $code->() unless $enabled;
+    return get_service('Consumption')->lifecycle($self, $code);
+}
+
+sub consumption_prepaid {
+    my ($us) = @_;
+    return 1 if defined $us->service->config->{consumption};
+    my $root = $us->top_parent;
+    return 1 if $root->id != $us->id && defined $root->service->config->{consumption};
+    return 0;
+}
+
+sub prepaid_cash_required {
+    my ($root, $bonus_pool) = @_;
+    require Core::Billing::Consumption;
+    $bonus_pool = 0 if $bonus_pool < 0;
+    my $required = 0;
+    my @queue = ($root);
+    while (my $node = shift @queue) {
+        if (my $wd = $node->withdraw) {
+            unless ($wd->paid) {
+                my $total = Core::Billing::Consumption::money_to_minor($wd->get_total);
+                my $available = Core::Billing::Consumption::money_to_minor(
+                    calc_available_bonuses($node->service, $bonus_pool, $wd->get_total));
+                $available = $total if $available > $total;
+                $required += $total - $available;
+                $bonus_pool = Core::Billing::Consumption::minor_to_money(
+                    Core::Billing::Consumption::money_to_minor($bonus_pool) - $available);
+            }
+        }
+        unshift @queue, @{ $node->children };
+    }
+    return $required;
+}
 
 sub awaiting_payment {
     my $self = shift;
@@ -64,6 +107,12 @@ sub create_service_recursive {
 
     if ( $service->get_period ) {
         $args{months} ||= $service->get_period;
+    }
+
+    # Validate an explicitly enabled policy before creating or charging an order.
+    if (defined $service->config->{consumption}) {
+        require Core::Billing::Consumption;
+        Core::Billing::Consumption::normalize_policy($service->config->{consumption});
     }
 
     $args{next} = $service->get_next;
@@ -187,7 +236,7 @@ sub add_withdraw_next {
     );
 
     # Если денег не хватает и установлен флаг продления на всю сумму, то вычисляем wd здесь
-    if ( $self->service->settings->{allow_partial_period} ) {
+    if ( $self->service->settings->{allow_partial_period} && !consumption_prepaid($self) ) {
         apply_partial_period( $self, \%wd, $self->service->get_period );
     }
 
@@ -254,12 +303,24 @@ sub calc_payment {
         }
     }
 
+    if (consumption_prepaid($self)) {
+        require Core::Billing::Consumption;
+        my $required = $root->service->get_is_composite
+            ? prepaid_cash_required($root, $user->get_bonus)
+            : Core::Billing::Consumption::money_to_minor($total)
+                - Core::Billing::Consumption::money_to_minor($bonus > $total ? $total : $bonus);
+        # PREPAID never grants consumption quotas against credit/overdraft.
+        return 0 if $user->get_balance < 0
+            || Core::Billing::Consumption::money_to_minor($user->get_balance) < $required;
+    }
+
     # Not enough money
     return 0 if (
                     $check_total > 0 &&
                     $user->get_balance + $user->get_credit + $bonus < $check_total &&
                     !$user->get_can_overdraft &&
-                    !$self->get_pay_in_credit );
+                    !$self->get_pay_in_credit &&
+                    !consumption_prepaid($self) );
 
     if ( $bonus >= $total ) {
         $bonus = $total;
@@ -291,6 +352,13 @@ sub is_pay {
     # Already withdraw
     return 1 if $wd->get_withdraw_date;
 
+    if (consumption_prepaid($self)) {
+        $self->dbh->selectrow_array('SELECT user_id FROM users WHERE user_id=? FOR UPDATE', undef, $self->get_user_id);
+        $self->user->reload;
+        $wd->reload;
+        return 1 if $wd->paid;
+    }
+
     my $pay = calc_payment( $self, $wd->get_total ) or return 0;
     my ( $bonus, $total ) = @{$pay}{qw( bonus total )};
 
@@ -309,14 +377,37 @@ sub is_pay {
 sub set_service_expire {
     my $self = shift;
 
+    my $consumption = get_service('Consumption');
+    if (my $period = $consumption->period_for($self)) {
+        if (defined $period->{closed_epoch}) {
+            get_service('report')->status(409);
+            get_service('report')->add_error('消费期间已关闭，不能再次激活同一账单');
+            return undef;
+        }
+        # Replaying payment for an already frozen withdrawal must not extend
+        # its original purchased term, even when the retry arrives later.
+        $self->withdraw->set(end_date => $period->{ends_at});
+        return $self->set(expire => $period->{ends_at});
+    }
+
     my $wd = $self->withdraw->get;
     my $now = now;
+    my $settled_consumption;
+    if (defined $self->service->config->{consumption}) {
+        my $previous = $self->dbh->selectrow_hashref(
+            'SELECT closed_epoch FROM consumption_periods WHERE user_service_id=? ORDER BY id DESC LIMIT 1',
+            undef, $self->id,
+        );
+        $settled_consumption = $previous && defined($previous->{closed_epoch});
+    }
 
-    if ( $self->has_expired && $self->get_status ne STATUS_BLOCK ) {
+    if ( $self->has_expired && $self->get_status ne STATUS_BLOCK && !$settled_consumption ) {
         # Услуга истекла (не новая) и не заблокирована ранее
         # Будем продлять с момента истечения
         $now = $self->get_expire;
     }
+    # A settled consumption period has already ended, so a later purchase
+    # receives its complete new term from payment time, not the old cutoff.
 
     my $expire_date = calc_end_date_by_months( $self->billing, $now, $wd->{months} );
 
@@ -330,11 +421,18 @@ sub set_service_expire {
     #}}
 
     $self->withdraw->set( end_date => $expire_date );
-
-    return $self->set( expire => $expire_date );
+    my $result = $self->set( expire => $expire_date );
+    get_service('Consumption')->freeze_period($self) if defined $self->service->config->{consumption};
+    return $result;
 }
 
 sub create {
+    my $self = shift;
+    my @args = @_;
+    return consumption_transaction($self, sub { _create($self, @args) });
+}
+
+sub _create {
     my $self = shift;
     my %args = (
         children_free => 0,
@@ -353,6 +451,12 @@ sub create {
 
 sub prolongate {
     my $self = shift;
+    my @args = @_;
+    return consumption_transaction($self, sub { _prolongate($self, @args) });
+}
+
+sub _prolongate {
+    my $self = shift;
     my %args = (
         force => 0,
         allow_partial_period => 0,
@@ -360,6 +464,12 @@ sub prolongate {
     );
 
     logger->info('Trying to prolong the service: ' . $self->id );
+
+    my $consumption_period = get_service('Consumption')->period_for($self);
+    # A trusted finalization awaits the normal finish/delete/change refund.
+    # Do not replace its current withdrawal with a fresh renewal in the meantime.
+    return undef if $consumption_period && defined($consumption_period->{finalized_epoch})
+        && !defined($consumption_period->{closed_epoch});
 
     unless (    $self->get_status eq STATUS_ACTIVE ||
                 $self->get_status eq STATUS_WAIT_FOR_PAY ||
@@ -444,7 +554,8 @@ sub switch_to_next_service {
         my %wd = calc_withdraw( $us->billing, $service->get );
         delete @wd{ qw/ create_date end_date withdraw_date user_service_id / };
 
-        if ( $args{allow_partial_period} || $service->settings->{allow_partial_period} ) {
+        if (( $args{allow_partial_period} || $service->settings->{allow_partial_period} )
+            && !defined $service->config->{consumption} ) {
             apply_partial_period( $us, \%wd, $service->get_period );
         }
 
@@ -527,6 +638,13 @@ sub money_back {
     my $date = shift || $self->get_expire;
 
     return undef unless $self->get_withdraw_id;
+
+    # A paid consumption period is immutable even if the live tariff changes.
+    # Its refund path uses the frozen price/quotas and closes the period once.
+    my $consumption = get_service('Consumption');
+    if ($consumption->period_for($self)) {
+        return $consumption->refund($self, $date);
+    }
 
     my $service = get_service('service', _id => $self->get_service_id );
     return undef unless $service;

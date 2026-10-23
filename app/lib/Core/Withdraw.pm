@@ -196,8 +196,6 @@ sub paid {
 }
 sub unpaid { $_[0]->paid ? 0 : 1 };
 
-*delete = \&delete_unpaid;
-
 sub delete_unpaid {
     my $self = shift;
     my $usi = shift || $self->usi;
@@ -218,6 +216,12 @@ sub api_set {
     my %args = (
         @_,
     );
+
+    if ($self->has_consumption_period) {
+        get_service('report')->status(409);
+        get_service('report')->add_error('已冻结的预付计量账单不能修改，请创建新的计费周期');
+        return undef;
+    }
 
     my $us = $self->srv('us', _id => $args{user_service_id} );
     unless ( $us ) {
@@ -271,6 +275,24 @@ sub api_set {
     $us->touch;
 
     return scalar $self->get;
+}
+
+sub has_consumption_period {
+    my $self = shift;
+    return 0 unless $self->id;
+    return $self->dbh->selectrow_array(
+        'SELECT id FROM consumption_periods WHERE withdraw_id=?', undef, $self->id,
+    ) ? 1 : 0;
+}
+
+sub delete {
+    my $self = shift;
+    if ($self->has_consumption_period) {
+        get_service('report')->status(409);
+        get_service('report')->add_error('已冻结的预付计量账单必须保留，不能删除');
+        return undef;
+    }
+    return $self->delete_unpaid(@_);
 }
 
 sub sum {
