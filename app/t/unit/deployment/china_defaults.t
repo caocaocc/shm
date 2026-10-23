@@ -155,4 +155,14 @@ subtest 'new deployment defaults to CNY and keeps an explicit legacy currency' =
     is($currency->get_value('RUB'), 1, 'RUB remains the exchange-rate base');
 };
 
+subtest 'payment currency follows the current billing configuration' => sub {
+    my $config = bless { data => { currency => 'CNY' } }, 'DeploymentBillingConfig';
+    no warnings 'redefine';
+    local *Core::Cloud::Currency::get_service = sub { $config };
+    my $currency = bless {}, 'Core::Cloud::Currency';
+    is($currency->system_currency, 'CNY', 'initial accounting unit');
+    $config->{data}{currency} = 'USD';
+    is($currency->system_currency, 'USD', 'a persistent worker cannot authorize using a stale unit');
+};
+
 done_testing();

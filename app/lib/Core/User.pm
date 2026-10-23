@@ -860,7 +860,7 @@ sub payment {
     if (defined $args{currency}) {
         unless (!ref($args{currency}) && $args{currency} =~ /\A[A-Za-z]{3}\z/
             && uc($args{currency}) eq $currency) {
-            get_service('report')->add_error('Payment currency does not match account currency');
+            get_service('report')->add_error('支付币种与账本币种不一致，不能直接入账');
             return undef;
         }
         $args{currency} = $currency;
@@ -968,6 +968,14 @@ sub delete {
 
     if ( $self->is_admin ) {
         $report->add_error("Can't delete admin");
+        return undef;
+    }
+
+    # Preserve the owner and audit trail before the legacy delete_all sequence.
+    if ($self->dbh->selectrow_array('SELECT 1 FROM epay_orders WHERE user_id=? LIMIT 1', undef, $self->id)
+        || $self->dbh->selectrow_array('SELECT 1 FROM consumption_periods WHERE user_id=? LIMIT 1', undef, $self->id)) {
+        $report->status(409);
+        $report->add_error('用户存在易支付订单或冻结计费记录，不能直接删除，请停用账户并保留账务记录');
         return undef;
     }
 

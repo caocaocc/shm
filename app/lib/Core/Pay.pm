@@ -68,6 +68,18 @@ sub add {
     return $self->SUPER::add( %args );
 }
 
+sub delete {
+    my $self = shift;
+    if ($self->id && $self->dbh->selectrow_array(
+        'SELECT 1 FROM epay_orders WHERE payment_id=? LIMIT 1', undef, $self->id,
+    )) {
+        get_service('report')->status(409);
+        get_service('report')->add_error('易支付入账流水必须保留，不能删除；退款需要单独的反向账务记录');
+        return undef;
+    }
+    return $self->SUPER::delete(@_);
+}
+
 sub pays {
     my $self = shift;
     my %args = (

@@ -52,6 +52,8 @@ sub job_download_all_paystems {
     my $spool = get_service('spool');
 
     for my $ps_name ( $self->ps_list ) {
+        # The bundled Epay adapter is shipped and updated with the backend.
+        next if $ps_name eq 'epay';
 
         my $need_update_to = $config->get_data->{ $ps_name }->{need_update_to};
         next if -f $self->ps_file_name( $ps_name ) && !$need_update_to;
@@ -87,6 +89,8 @@ sub job_download_paystem {
     my $ps_arch = $task->settings->{arch} || $self->arch;
     my $ps_name = $task->settings->{ps_name};
     my $version = $task->settings->{version};
+
+    return SUCCESS, { msg => '易支付适配器随后端发布，无需下载' } if $ps_name eq 'epay';
 
     unless ( $self->get_auth_basic() ) {
         return SUCCESS, { msg => 'no auth' };

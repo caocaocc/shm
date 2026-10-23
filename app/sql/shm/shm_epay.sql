@@ -1,0 +1,31 @@
+-- Merge this DDL into fresh-install schema and the release migration.
+-- Signing keys remain in mounted runtime secret files, never in this table.
+CREATE TABLE IF NOT EXISTS epay_orders (
+  out_trade_no varchar(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  user_id int(11) NOT NULL,
+  profile varchar(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  protocol varchar(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  pid varchar(12) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  key_version varchar(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  gateway_id char(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  config_fingerprint char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  profile_config json NOT NULL,
+  amount_cents bigint unsigned NOT NULL,
+  currency char(3) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  payment_type varchar(32) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL,
+  state varchar(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'PENDING',
+  trade_no varchar(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL,
+  payment_id int(11) DEFAULT NULL,
+  created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  paid_at datetime DEFAULT NULL,
+  PRIMARY KEY (out_trade_no),
+  UNIQUE KEY epay_gateway_trade (gateway_id,pid,trade_no),
+  UNIQUE KEY epay_payment (payment_id),
+  KEY epay_user_state (user_id,state,created_at),
+  CONSTRAINT epay_order_user FOREIGN KEY (user_id) REFERENCES users(user_id),
+  CONSTRAINT epay_order_payment FOREIGN KEY (payment_id) REFERENCES pays_history(id),
+  CONSTRAINT epay_currency CHECK (currency = 'CNY'),
+  CONSTRAINT epay_positive_amount CHECK (amount_cents > 0 AND amount_cents <= 9999999999),
+  CONSTRAINT epay_protocol CHECK (protocol IN ('v2_rsa','v1_md5')),
+  CONSTRAINT epay_state CHECK (state IN ('PENDING','PAID'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

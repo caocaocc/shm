@@ -38,6 +38,7 @@ my $gid = 'www-data';
 
 # Document roots and mappings
 my %doc_roots = (
+    '/shm/pay_systems/epay.cgi' => '/app/public_html/shm/pay_systems/epay.cgi',
     '/shm/pay_systems'  => '/app/data/pay_systems',
     '/shm/v1'           => '/app/public_html/shm/v1.cgi',
     '/'                 => '/app/public_html',
