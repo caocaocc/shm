@@ -19,38 +19,38 @@ sub structure {
         id => {
             type => 'number',
             key => 1,
-            title => 'id платежа',
+            title => '支付 ID',
         },
         user_id => {
             type => 'number',
             auto_fill => 1,
-            title => 'id пользователя',
+            title => '用户 ID',
         },
         pay_system_id => {
             type => 'text',
-            title => 'id платежной системы',
+            title => '支付通道 ID',
         },
         money => {
             type => 'number',
             required => 1,
-            title => 'сумма платежа',
+            title => '支付金额',
             use_for_stats => 1,
             stats_use_when_add => 1,
         },
         date => {
             type => 'now',
-            title => 'дата платежа',
+            title => '支付时间',
         },
         comment => {
             type => 'json',
             value => undef,
             hide_for_user => 1,
-            title => 'комментарии',
+            title => '备注',
         },
         uniq_key => {
             type => 'text',
             hide_for_user => 1,
-            title => 'уникальный ключ платежа',
+            title => '支付唯一标识',
         }
     }
 }

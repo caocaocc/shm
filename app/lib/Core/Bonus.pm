@@ -1,6 +1,7 @@
 package Core::Bonus;
 
 use v5.14;
+use utf8;
 use parent 'Core::Base';
 use Core::Base;
 use Core::Const;
@@ -12,28 +13,28 @@ sub structure {
         id => {
             type => 'number',
             key => 1,
-            title => 'id бонуса',
+            title => '奖励 ID',
         },
         user_id => {
             type => 'number',
             auto_fill => 1,
-            title => 'id пользователя',
+            title => '用户 ID',
         },
         date => {
             type => 'now',
-            title => 'дата создания бонуса',
+            title => '奖励创建时间',
         },
         bonus => {
             type => 'number',
             required => 1,
-            title => 'кол-во бонусов',
+            title => '奖励数量',
             use_for_stats => 1,
             stats_use_when_add => 1,
         },
         comment => {
             type => 'json',
             value => undef,
-            title => 'комментарий',
+            title => '备注',
         },
     }
 }

@@ -16,35 +16,35 @@ sub structure {
         date => {
             type => 'date',
             key => 1,
-            title => 'дата',
+            title => '日期',
         },
         kind => {
             type => 'text',
-            title => 'контроллер',
+            title => '控制器',
         },
         field => {
             type => 'text',
-            title => 'тип',
+            title => '类型',
         },
         count => {
             type => 'number',
-            title => 'кол-во',
+            title => '数量',
         },
         sum => {
             type => 'number',
-            title => 'сумма',
+            title => '金额',
         },
         min => {
             type => 'number',
-            title => 'минимальная сумма',
+            title => '最小金额',
         },
         max => {
             type => 'number',
-            title => 'максимальная сумма',
+            title => '最大金额',
         },
         avg => {
             type => 'number',
-            title => 'средняя сумма',
+            title => '平均金额',
         },
     };
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 
 use v5.14;
+use utf8;
 use SHM;
 use Core::System::ServiceManager qw( get_service );
 use Core::Utils qw(
@@ -10,6 +11,9 @@ use Core::Utils qw(
 use Core::Sql::Data;
 use version;
 use JSON::PP;
+
+binmode STDOUT, ':encoding(UTF-8)';
+binmode STDERR, ':encoding(UTF-8)';
 
 my $sql = Core::Sql::Data->new;
 my $migration_boundary_version = version->parse('0.2.17');
@@ -22,48 +26,49 @@ if ( -f "$ENV{SHM_ROOT_DIR}/version.json" ) {
     $version = $ENV{SHM_VERSION_OVERRIDE} || $version_data->{version};
     $version_prefix = "-" . $version_data->{commitSha};
     $version =~s/-.+$//;
-    say "SHM version: $version$version_prefix";
+    say "SHM 版本：$version$version_prefix";
 }
 
 my $logger = get_service('logger');
 my $config = get_service('config');
-my $dbh = db_connect( %{ $config->file->{config}{database} } ) or die "Can't connect to DN";
+my $dbh = db_connect( %{ $config->file->{config}{database} } ) or die "无法连接数据库\n";
 $config->local('dbh', $dbh );
 switch_user( 1 );
 
 my $tables_count = $sql->do("SHOW TABLES");
+die "无法读取数据库结构，初始化已停止\n" unless defined $tables_count;
 
 if ( $ENV{DEV} || $tables_count == 0 ) {
     if ( $ENV{DEV} && $ENV{DEV_DB_CLEANUP} && $tables_count ) {
-        print "Cleanup database for developer mode... ";
+        print "清理开发模式数据库… ";
         import_sql_file( $dbh, "$ENV{SHM_ROOT_DIR}/sql/shm/shm_dev_cleanup.sql" );
-        say "done";
+        say "完成";
     }
 
-    print "Creating structure of database... ";
+    print "创建数据库结构… ";
     import_sql_file( $dbh, "$ENV{SHM_ROOT_DIR}/sql/shm/shm_structure.sql" );
-    say "done";
+    say "完成";
 
     if ( $ENV{DEV} ) {
-        print "Loading data for developers... ";
+        print "载入开发测试数据… ";
         import_sql_file( $dbh, "$ENV{SHM_ROOT_DIR}/sql/shm/shm_dev_test_data.sql" );
     } else {
-        print "Loading data... ";
+        print "载入新部署初始化数据… ";
         import_sql_file( $dbh, "$ENV{SHM_ROOT_DIR}/sql/shm/shm_data.sql" );
     }
     $config->id( '_shm' )->set_value( { version => $version . $version_prefix } ) if $version;
-    say "done";
+    say "完成";
 } elsif ( $version ) {
     # Start migrations
     chdir "$ENV{SHM_ROOT_DIR}/bin/migrations";
 
     my $config = $config->id( '_shm' );
     my $cur_version = $ENV{SHM_VERSION_OVERRIDE_DB} || $config->get_data->{version};
-    say "Current version: $cur_version";
+    say "数据库版本：$cur_version";
 
     # Check version format (should be like 1.2.3-abcd)
     unless ( $cur_version && $cur_version =~ /^\d+\.\d+\.\d+-.+$/ ) {
-        say "Invalid version format '$cur_version', using current version '$version'";
+        say "数据库版本格式无效（$cur_version），使用当前版本 $version";
         $cur_version = $version . $version_prefix;
         $config->set_value( { version => $cur_version } );
     }
@@ -82,7 +87,7 @@ if ( $ENV{DEV} || $tables_count == 0 ) {
         next if version->parse( $nv ) <= version->parse( $cur_version );
         next if version->parse( $nv ) > version->parse( $version );
 
-        say "Applying migration for version: $nv ...";
+        say "应用数据库迁移：$nv…";
         eval {
             if ( version->parse( $nv ) > $migration_boundary_version ) {
                 import_sql_file( $dbh, "$nv.sql" );
@@ -99,13 +104,13 @@ if ( $ENV{DEV} || $tables_count == 0 ) {
 
         $config->set_value( { version => $nv . $version_prefix } );
         $dbh->commit() or die "Commit failed after migration '$nv': " . ( $dbh->errstr // 'unknown error' ) . "\n";
-        say "done"
+        say "完成"
     }
 
     $config->set_value( { version => $version . $version_prefix } );
 }
 
-# Load cloud and download paysystems and templates
+# Queue missing payment scripts when Cloud authentication is configured.
 get_service('Cloud::Jobs')->startup();
 
 $dbh->commit();

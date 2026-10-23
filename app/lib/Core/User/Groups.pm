@@ -1,6 +1,7 @@
 package Core::User::Groups;
 
 use v5.14;
+use utf8;
 use parent 'Core::Base';
 use Core::Base;
 
@@ -16,32 +17,32 @@ sub structure {
         gid => {
             type => 'number',
             key => 1,
-            title => 'id группы',
+            title => '组 ID',
         },
         name => {
             type => 'text',
             required => 1,
-            title => 'название группы',
+            title => '组名称',
         },
         is_admin => {
             type => 'number',
             default => 0,
             enum => [0,1],
-            title => 'группа администраторов',
-            description => 'разрешает доступ к /admin/* (проверяется Core::User::is_admin)',
+            title => '管理员组',
+            description => '允许访问 /admin/*（由 Core::User::is_admin 检查）',
         },
         default_policy => {
             type => 'text',
             default => 'allow',
             enum => ['allow','deny'],
-            title => 'политика по умолчанию',
-            description => 'решение, если ни одно правило из `rules` не совпало',
+            title => '默认策略',
+            description => '未匹配任何 rules 规则时采用的策略',
         },
         rules => {
             type => 'json',
             value => undef,
-            title => 'правила',
-            description => 'массив { action: allow|deny, uri, methods }. deny всегда приоритетнее allow, независимо от порядка; порядок важен только между правилами одного action',
+            title => '规则',
+            description => '数组 { action: allow|deny, uri, methods }。deny 始终优先于 allow；仅相同 action 的规则按顺序匹配。',
         },
     };
 }

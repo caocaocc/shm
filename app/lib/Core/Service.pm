@@ -1,6 +1,7 @@
 package Core::Service;
 
 use v5.14;
+use utf8;
 use parent 'Core::Base';
 use Core::Base;
 use Core::Const;
@@ -16,101 +17,101 @@ sub structure {
         service_id => {
             type => 'number',
             key => 1,
-            title => 'id услуги',
+            title => '服务 ID',
         },
         name => {
             type => 'text',
             required => 1,
-            title => 'название услуги',
+            title => '服务名称',
         },
         cost => {
             type => 'number',
             required => 1,
-            title => 'стоимость',
+            title => '价格',
         },
         period => {
             type => 'number',
             default => 1,
-            title => 'период',
+            title => '周期',
         },
         category => {
             type => 'text',
             default => '%',
-            title => 'категория',
+            title => '分类',
         },
         children => {
             type => 'json',
             value => undef,
             hide_for_user => 1,
-            title => 'дочерние услуги',
+            title => '子服务',
         },
         next => {
             type => 'number',
             hide_for_user => 1,
-            title => 'id сделующей услуги',
+            title => '后续服务 ID',
         },
         allow_to_order => {
             type => 'number',
             default => 0,
             hide_for_user => 1,
             enum => [0,1],
-            title => 'флаг разрешения регистрации',
+            title => '允许订购',
         },
         max_count => {
             type => 'number',
             hide_for_user => 1,
-            title => 'не используется',
+            title => '未使用',
         },
         question => {
             type => 'number',
             hide_for_user => 1,
-            title => 'не используется',
+            title => '未使用',
         },
         pay_always => {
             type => 'number',
             default => 0,
             hide_for_user => 1,
-            title => 'флаг платности',
+            title => '始终收费',
             enum => [0,1],
-            description => '1 - платная всегда, даже в качестве дочерней',
+            description => '1 表示始终收费，包括作为子服务时',
         },
         no_discount => {
             type => 'number',
             default => 0,
             hide_for_user => 1,
             enum => [0,1],
-            title => 'флаг неприменяемости скидок',
+            title => '不参与折扣',
         },
         descr => {
             type => 'text',
-            title => 'описание',
+            title => '说明',
         },
         pay_in_credit => {
             type => 'number',
             default => 0,
             hide_for_user => 1,
             enum => [0,1],
-            title => 'флаг разрешения списания в минус',
+            title => '允许余额为负时扣费',
         },
         config => {
             type => 'json',
             value => undef,
             hide_for_user => 1,
-            title => 'конфиг',
+            title => '配置',
         },
         is_composite => {
             type => 'number',
             default => 0,
             hide_for_user => 1,
             enum => [0,1],
-            title => 'флаг составной услуги',
+            title => '组合服务',
         },
         deleted => {
             type => 'number',
             default => 0,
             hide_for_user => 1,
             enum => [0,1],
-            title => 'флаг удаленной услуги',
+            title => '服务已删除',
         },
     };
 }

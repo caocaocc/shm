@@ -37,7 +37,7 @@ subtest 'Time difference calculations' => sub {
     ok(defined $result, 'Function returns defined result for valid date');
 };
 
-subtest 'Russian pluralization' => sub {
+subtest 'Chinese time units' => sub {
     # Тестируем правильность склонения русских слов
     # Поскольку функция использует реальное время, создадим тесты для проверки логики склонений
 
@@ -45,8 +45,8 @@ subtest 'Russian pluralization' => sub {
     my $result = format_time_diff('2020-01-01 00:00:00'); # Дата в прошлом
 
     # Функция должна вернуть строку с русскими словами времени
-    ok($result =~ /(?:год|года|лет|месяц|месяца|месяцев|день|дня|дней|час|часа|часов|минута|минуты|минут|менее минуты)/,
-         'Result contains Russian time words');
+    ok($result =~ /(?:年|个月|天|小时|分钟|不足一分钟)/,
+         'Result contains Chinese time units');
 };
 
 subtest 'Date format validation' => sub {
@@ -76,7 +76,7 @@ subtest 'Edge cases' => sub {
     my $old_date = '1990-01-01 00:00:00';
     my $old_result = format_time_diff($old_date);
     ok(defined $old_result, 'Very old date returns defined result');
-    ok($old_result =~ /лет/, 'Very old date mentions years');
+    ok($old_result =~ /年/, 'Very old date mentions years');
 };
 
 subtest 'Output format validation' => sub {
@@ -88,10 +88,10 @@ subtest 'Output format validation' => sub {
     is(ref $result, '', 'Result is a scalar string');
 
     # Проверяем, что результат содержит только валидные символы (цифры, буквы, пробелы, запятые)
-    ok($result =~ /^[\d\w\s,а-яё]+$/i || $result eq 'менее минуты', 'Result contains only valid characters');
+    ok($result =~ /^[\d\s,年个月天小时分钟]+$/i || $result eq '不足一分钟', 'Result contains only valid characters');
 
     # Если результат не "менее минуты", он должен содержать запятые между компонентами
-    if ($result ne 'менее минуты') {
+    if ($result ne '不足一分钟') {
         # Результат может содержать до 3 компонентов, разделенных запятыми
         my @parts = split /,\s*/, $result;
         cmp_ok(scalar @parts, '<=', 3, 'Result has at most 3 time components');
@@ -118,44 +118,22 @@ subtest 'Multiple component output' => sub {
     # Используем достаточно старую дату, чтобы получить несколько компонентов
     my $multi_result = format_time_diff('2020-06-15 14:30:20');
 
-    if ($multi_result ne 'менее минуты') {
+    if ($multi_result ne '不足一分钟') {
         # Проверяем, что компоненты разделены правильно
         my @components = split /,\s*/, $multi_result;
 
         for my $component (@components) {
             # Каждый компонент должен содержать число и русское слово времени
-            ok($component =~ /^\d+\s+(?:год|года|лет|месяц|месяца|месяцев|день|дня|дней|час|часа|часов|минута|минуты|минут)$/,
+            ok($component =~ /^\d+\s+(?:年|个月|天|小时|分钟)$/,
                  "Component '$component' has correct format");
         }
     }
 };
 
-subtest 'Specific pluralization tests' => sub {
-    # Тестируем конкретные случаи склонений русских слов
-    # Используем фиксированные даты для предсказуемых результатов
-
-    # Проверяем различные числа для правильного склонения
-    # 1 - единственное число
-    # 2-4 - множественное число 1
-    # 5+ - множественное число 2
-    # 11-14 - особые случаи (всегда множественное число 2)
-
-    my $result_old = format_time_diff('2000-01-01 00:00:00'); # Старая дата для получения лет
-
-    # Проверяем что результат содержит правильные окончания
-    if ($result_old =~ /(\d+)\s+(год|года|лет)/) {
-        my ($num, $word) = ($1, $2);
-
-        if ($num == 1) {
-            is($word, 'год', 'Correct pluralization for 1 year');
-        } elsif ($num >= 2 && $num <= 4) {
-            is($word, 'года', 'Correct pluralization for 2-4 years');
-        } elsif ($num >= 5 || ($num >= 11 && $num <= 14)) {
-            is($word, 'лет', 'Correct pluralization for 5+ years or 11-14');
-        }
-    } else {
-        pass('No years in result or format different than expected');
-    }
+subtest 'Chinese units do not depend on plural endings' => sub {
+    my $result_old = format_time_diff('2000-01-01 00:00:00');
+    like($result_old, qr/\d+\s+年/, 'Years use the Chinese unit');
+    unlike($result_old, qr/[А-Яа-яёЁ]/, 'No Russian plural endings remain');
 };
 
 subtest 'Boundary value testing' => sub {
@@ -194,10 +172,10 @@ subtest 'Less than minute cases' => sub {
     ok(defined $result50, 'Result defined for 50 seconds ago');
 
     # По крайней мере один из результатов должен быть "менее минуты"
-    my $has_less_than_minute = ($result10 eq 'менее минуты') ||
-                              ($result30 eq 'менее минуты') ||
-                              ($result50 eq 'менее минуты');
-    ok($has_less_than_minute || $result10 =~ /минут/, 'At least one result shows less than minute or minutes');
+    my $has_less_than_minute = ($result10 eq '不足一分钟') ||
+                              ($result30 eq '不足一分钟') ||
+                              ($result50 eq '不足一分钟');
+    ok($has_less_than_minute || $result10 =~ /分钟/, 'At least one result shows less than minute or minutes');
 };
 
 done_testing;

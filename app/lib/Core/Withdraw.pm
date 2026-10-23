@@ -1,6 +1,7 @@
 package Core::Withdraw;
 
 use v5.14;
+use utf8;
 use parent 'Core::Base';
 use Core::Base;
 use Core::Const;
@@ -12,69 +13,69 @@ sub structure {
         withdraw_id => {
             type => 'number',
             key => 1,
-            title => 'id списания',
+            title => '扣费 ID',
         },
         user_id => {
             type => 'number',
             auto_fill => 1,
-            title => 'id пользователя',
+            title => '用户 ID',
         },
         create_date => {
             type => 'now',
-            title => 'дата создания списания',
+            title => '扣费创建时间',
             readOnly => 1,
         },
         withdraw_date => {
             type => 'date',
-            title => 'дата списания',
+            title => '扣费时间',
             readOnly => 1,
         },
         end_date => {
             type => 'date',
-            title => 'дата окончания',
+            title => '结束时间',
             readOnly => 1,
         },
         cost => {
             type => 'number',
             required => 1,
-            title => 'стоимость',
+            title => '价格',
             use_for_stats => 1,
         },
         discount => {
             type => 'number',
             default => 0,
-            title => 'скидка',
+            title => '折扣',
         },
         bonus => {
             type => 'number',
             default => 0,
-            title => 'кол-во бонусов',
+            title => '奖励数量',
             use_for_stats => 1,
         },
         months => {
             type => 'number',
             default => 1,
-            title => 'период',
+            title => '周期',
         },
         total => {
             type => 'number',
-            title => 'итоговая стоимость',
+            title => '总金额',
             use_for_stats => 1,
         },
         service_id => {
             type => 'number',
             required => 1,
-            title => 'id услуги',
+            title => '服务 ID',
         },
         qnt => {
             type => 'number',
             default => 1,
-            title => 'кол-во',
+            title => '数量',
         },
         user_service_id => {
             type => 'number',
             required => 1,
-            title => 'id услуги пользователя',
+            title => '用户服务 ID',
         },
     }
 }

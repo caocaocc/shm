@@ -1,6 +1,7 @@
 package Core::Cloud::Jobs;
 
 use v5.14;
+use utf8;
 use parent 'Core::Cloud';
 use Core::Base;
 use Core::Const;
@@ -26,7 +27,7 @@ sub job_download_all_paystems {
     my $self = shift;
 
     if ( $ENV{LEGACY_PAYSYSTEMS_PATH} ) {
-        logger->debug("Пропускаем скачивания платежных систем для легаси режима");
+        logger->debug("旧版兼容模式下跳过支付通道下载");
         return undef;
     }
 

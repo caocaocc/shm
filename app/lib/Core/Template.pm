@@ -67,11 +67,11 @@ sub structure {
         id => {
             type => 'text',
             key => 1,
-            title => 'имя шаблона',
+            title => '模板名称',
         },
         data => {
             type => 'text',
-            title => 'шаблон',
+            title => '模板',
         },
         settings => { type => 'json', value => {} },
     }

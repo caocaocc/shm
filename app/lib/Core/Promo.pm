@@ -1,6 +1,7 @@
 package Core::Promo;
 
 use v5.14;
+use utf8;
 use parent 'Core::Base';
 use Core::Base;
 use Core::Utils qw(
@@ -16,31 +17,31 @@ sub structure {
         id => {
             type => 'text',
             key => 1,
-            title => 'id промокода',
+            title => '兑换码 ID',
         },
         template_id => {
             type => 'text',
-            title => 'id шаблона',
+            title => '模板 ID',
         },
         user_id => {
             type => 'number',
             # key => 1,
-            title => 'id пользователя кто создал',
+            title => '创建者用户 ID',
         },
         created => {
             type => 'now',
-            title => 'дата создания',
+            title => '创建时间',
         },
         used => {
             type => 'date',
-            title => 'дата использования',
+            title => '使用时间',
             use_for_stats => 1,
             stats_mode => 'inc',
             stats_use_when_set => 1,
         },
         used_by => {
             type => 'number',
-            title => 'id пользователя кто использовал промокод',
+            title => '使用兑换码的用户 ID',
         },
         settings => {
             type => 'json',
@@ -48,7 +49,7 @@ sub structure {
         },
         expire => {
             type => 'date',
-            title => 'дата истечения',
+            title => '到期时间',
         },
     }
 }

@@ -1,6 +1,7 @@
 package Core::User::Logins;
 
 use v5.14;
+use utf8;
 
 use parent 'Core::Base';
 use Core::Base;
@@ -28,13 +29,13 @@ sub structure {
         login => {
             type  => 'text',
             key   => 1,
-            title => 'логин',
+            title => '登录名',
         },
         type => {
             type  => 'text',
             key2  => 1,
             required => 1,
-            title => 'тип логина',
+            title => '登录类型',
             default => 'login',
         },
         user_id => {
@@ -42,12 +43,12 @@ sub structure {
             required => 1,
             auto_fill => 1,
             hide_for_user => 1,
-            title    => 'id пользователя',
+            title    => '用户 ID',
         },
         settings => {
             type  => 'json',
             value => {},
-            title => 'настройки логина',
+            title => '登录设置',
             hide_for_user => 1,
         },
     };

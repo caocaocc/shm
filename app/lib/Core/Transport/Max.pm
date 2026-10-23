@@ -391,12 +391,12 @@ sub send {
         $self->profile( $profile );
 
         unless ( $self->{chat_id} ) {
-            push @ret, { error => "chat_id не найден", profile => $profile };
+            push @ret, { error => "未找到 chat_id", profile => $profile };
             next;
         }
 
         unless ( $self->{token} ) {
-            push @ret, { error => "token не найден", profile => $profile };
+            push @ret, { error => "未找到 token", profile => $profile };
             next;
         }
 
@@ -455,7 +455,7 @@ sub task_send {
     }
 
     unless ( scalar $self->user_profiles() ) {
-        return SUCCESS, { error => "Пользователь не добавил MAX бота" };
+        return SUCCESS, { error => "用户尚未添加 MAX 机器人" };
     }
 
     my $message = $template->parse(
@@ -467,7 +467,7 @@ sub task_send {
         },
     );
 
-    return SUCCESS, { msg => "Шаблон не содержит данных" } unless $message;
+    return SUCCESS, { msg => "模板没有数据" } unless $message;
 
     my @ret = $self->send( $message );
 

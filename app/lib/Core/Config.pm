@@ -1,5 +1,6 @@
 package Core::Config;
 use v5.14;
+use utf8;
 
 use parent 'Core::Base';
 use Core::Base;
@@ -20,12 +21,12 @@ sub structure {
         key => {
             type => 'text',
             key => 1,
-            title => 'ключ',
+            title => '键',
         },
         value => {
             type => 'json',
             required => 1,
-            title => 'значение',
+            title => '值',
         },
     }
 }

@@ -1,6 +1,7 @@
 package Core::Server;
 
 use v5.14;
+use utf8;
 use parent 'Core::Base';
 use Core::Base;
 
@@ -11,51 +12,51 @@ sub structure {
         server_id => {
             type => 'number',
             key => 1,
-            title => 'id сервера',
+            title => '服务器 ID',
         },
         server_gid => {
             type => 'number',
-            title => 'id группы',
+            title => '组 ID',
         },
         name => {
             type => 'text',
-            title => 'имя сервера',
+            title => '服务器名称',
         },
         transport => {         # ssh,http,etc...
             type => 'text',
             enum => ['ssh','http','telegram','mail','local'],
-            title => 'транспорт',
+            title => '传输方式',
         },
         host => {
             type => 'text',
-            title => 'адрес сервера',
+            title => '服务器地址',
         },
         ip => {                # ip адрес для построения DNS
             type => 'text',
-            title => 'ip сервера',
+            title => '服务器 IP',
         },
         weight => {
             type => 'number',
-            title => 'вес сервера для выборки',
-            description => 'чем больше вес, тем выше вероятность выборки',
+            title => '服务器选择权重',
+            description => '权重越高，被选中的概率越大',
         },
         success_count => {
             type => 'number',
-            title => 'не используется',
+            title => '未使用',
         },
         fail_count => {
             type => 'number',
-            title => 'не используется',
+            title => '未使用',
         },
         services_count => {
             type => 'number',
-            title => 'кол-во услуг на сервере',
+            title => '服务器上的服务数',
         },
         enabled => {
             type => 'number',
             enum => [0,1],
-            title => 'флаг включенного сервера',
-            description => '0 - выключен, 1 - включен',
+            title => '服务器启用状态',
+            description => '0 表示禁用，1 表示启用',
         },
         settings => { type => 'json', value => {} },
     }
