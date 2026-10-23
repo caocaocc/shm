@@ -12,11 +12,9 @@
 
 ## 应用与数据库时区
 
-`conf/shm.conf` 读取运行环境；`TZ` 空或缺失时才补为 `Asia/Shanghai`，显式有效值不被该缺省覆盖。原启动流程会将环境写入 `/etc/environment`，应用也读取该文件，应确认实际进程中的值。
+应用与任务进程按官方配置使用 `TZ=Asia/Shanghai`。`conf/shm.conf` 在 `TZ` 空或缺失时补为 `Asia/Shanghai`，显式有效值不被缺省覆盖。原启动流程会将环境写入 `/etc/environment`，应用也读取该文件，应确认实际进程中的值。
 
-数据库连接按非空 `DB_TZ`、`TZ`、`Asia/Shanghai` 的顺序选择 session 时区，参数化执行 `SET time_zone = ?`。无效配置或 MySQL 拒绝时区时立即失败，不静默改用 UTC 或 SYSTEM。
-
-`DB_TZ` 必须注入实际后端和任务进程。原 Compose 不映射该变量，仅写在宿主 `.env` 中不会生效。若使用显式 `DB_TZ=+08:00`，应用的 `TZ` 仍可保持 `Asia/Shanghai`；两者需要分别核对。
+数据库连接跟随同一 `TZ`，参数化执行 `SET time_zone = ?`。无效配置或 MySQL 拒绝时区时立即失败，不静默改用 UTC 或 SYSTEM。
 
 MySQL 命名时区依赖已加载时区表。用应用实际连接验证：
 
@@ -25,10 +23,10 @@ SELECT @@session.time_zone, NOW(), UTC_TIMESTAMP();
 SELECT CONVERT_TZ('2026-01-01 00:00:00', '+00:00', 'Asia/Shanghai');
 ```
 
-最后一项应为 `2026-01-01 08:00:00`，不能为 `NULL`。无时区 SQL DATETIME 是业务时区的墙上时间；Unix epoch 与带偏移量 ISO 表示绝对时刻。改变 TZ 不迁移已有日期，应在调整前核对历史日期、到期、续费与通知时间。
+最后一项应为 `2026-01-01 08:00:00`，不能为 `NULL`；缺少时区表时先加载再重新连接。无时区 SQL DATETIME 是业务时区的墙上时间；Unix epoch 与带偏移量 ISO 表示绝对时刻。改变 TZ 不迁移已有日期，应在调整前核对历史日期、到期、续费与通知时间。
 
 ## 中文模板与运行资源
 
-新 seed 提供中文续费预测和密码重置主题、正文；SMTP、事件和收件人仍需配置。已有模板不会因升级自动改写。在运行目录的 `data/templates` 存在时，`Core::Template` 使用文件模式，应更新实际 `.tpl/.tpls`，不能只改数据库模板。
+新 seed 提供中文续费预测和密码重置主题、正文；SMTP、事件和收件人仍需配置。已有模板不会因升级自动改写；币种或时区偏离新站默认时，也应核对模板中的单位与时区标注。在运行目录的 `data/templates` 存在时，`Core::Template` 使用文件模式，应更新实际 `.tpl/.tpls`，不能只改数据库模板。
 
 支付通道需使用真实币种、金额单位和网关凭据。私钥和 MD5 密钥放在运行进程可读的只读文件中，不写进订单或日志。内置易支付入口及配置见[易支付说明](epay.md)。

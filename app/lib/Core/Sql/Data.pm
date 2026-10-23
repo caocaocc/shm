@@ -88,7 +88,7 @@ sub db_connect {
 
 sub configure {
     my $dbh = shift;
-    my $timezone = $ENV{DB_TZ} || $ENV{TZ} || 'Asia/Shanghai';
+    my $timezone = $ENV{TZ} || 'Asia/Shanghai';
 
     # MySQL accepts IANA names and UTC offsets. Bind the value even after
     # validation, so an environment variable can never become SQL syntax.
@@ -99,7 +99,7 @@ sub configure {
             $hours < 14 || ( $sign eq '+' && $hours == 14 && $minutes == 0 )
         );
     }
-    die "无效的数据库时区：请使用 IANA 名称或有效的 UTC 偏移量（DB_TZ）。\n"
+    die "无效的数据库时区：请将 TZ 设置为 IANA 名称或有效的 UTC 偏移量。\n"
         unless $valid_timezone;
 
     my @sql = (
@@ -111,7 +111,7 @@ sub configure {
 
     my $result = $dbh->do( 'SET time_zone = ?', undef, $timezone );
     die "数据库时区设置失败（$timezone）：" . ( $dbh->errstr // '未知错误' )
-        . "。请加载 MySQL 时区表，或显式设置 DB_TZ（例如 +08:00）。\n"
+        . "。请检查 TZ 配置；使用 IANA 名称时需加载 MySQL 时区表。\n"
         unless defined $result;
 
     return 1;

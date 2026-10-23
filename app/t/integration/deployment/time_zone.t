@@ -24,7 +24,6 @@ my $dbh = DBI->connect(
 ) or die "Isolated test database connection failed\n";
 
 local $ENV{TZ} = 'Asia/Shanghai';
-local $ENV{DB_TZ} = '';
 ok(Core::Sql::Data::configure($dbh), 'named Shanghai time zone configures a real MySQL session');
 is($dbh->selectrow_array('SELECT @@session.time_zone'), 'Asia/Shanghai',
     'MySQL session has the named time zone');
@@ -32,12 +31,12 @@ is($dbh->selectrow_array(q{
     SELECT CONVERT_TZ('2026-10-12 00:00:00', '+00:00', 'Asia/Shanghai')
 }), '2026-10-12 08:00:00', 'named time zone data is loaded');
 
-$ENV{DB_TZ} = '+08:00';
+$ENV{TZ} = '+08:00';
 ok(Core::Sql::Data::configure($dbh), 'explicit offset configures the same connection');
 is($dbh->selectrow_array('SELECT @@session.time_zone'), '+08:00', 'offset is bound correctly');
-is($ENV{TZ}, 'Asia/Shanghai', 'application time zone is unchanged');
+is($ENV{TZ}, '+08:00', 'database configuration preserves the official time zone setting');
 
-$ENV{DB_TZ} = 'Asia/NotARealTimeZone';
+$ENV{TZ} = 'Asia/NotARealTimeZone';
 my $success = eval { Core::Sql::Data::configure($dbh); 1 };
 ok(!$success, 'unknown named time zone fails against the real driver');
 like($@, qr/数据库时区设置失败/, 'failure is explicit');

@@ -59,9 +59,8 @@ use Core::Cloud::Currency ();
 }
 
 sub configured_database {
-    my ($timezone, $database_timezone) = @_;
+    my ($timezone) = @_;
     local $ENV{TZ} = $timezone;
-    local $ENV{DB_TZ} = $database_timezone;
     my $database = DeploymentDatabase->new;
     Core::Sql::Data::configure($database);
     return $database;
@@ -69,24 +68,23 @@ sub configured_database {
 
 subtest 'default and explicit database time zones are bound parameters' => sub {
     for my $case (
-        [undef, undef, 'Asia/Shanghai'],
-        ['', '', 'Asia/Shanghai'],
-        ['Asia/Shanghai', '', 'Asia/Shanghai'],
-        ['Europe/London', undef, 'Europe/London'],
-        ['Asia/Shanghai', '+08:00', '+08:00'],
-        ['Asia/Shanghai', '+14:00', '+14:00'],
-        ['Asia/Shanghai', '-13:59', '-13:59'],
-        ['Asia/Shanghai', 'Etc/GMT-8', 'Etc/GMT-8'],
+        [undef, 'Asia/Shanghai'],
+        ['', 'Asia/Shanghai'],
+        ['Asia/Shanghai', 'Asia/Shanghai'],
+        ['Europe/London', 'Europe/London'],
+        ['+08:00', '+08:00'],
+        ['+14:00', '+14:00'],
+        ['-13:59', '-13:59'],
+        ['Etc/GMT-8', 'Etc/GMT-8'],
     ) {
-        my $database = configured_database(@$case[0, 1]);
-        is_deeply($database->{calls}[-1], ['SET time_zone = ?', undef, $case->[2]],
-            "time zone $case->[2] is passed as data");
+        my $database = configured_database($case->[0]);
+        is_deeply($database->{calls}[-1], ['SET time_zone = ?', undef, $case->[1]],
+            "time zone $case->[1] is passed as data");
     }
 
     local $ENV{TZ} = 'Asia/Shanghai';
-    local $ENV{DB_TZ} = '+08:00';
     Core::Sql::Data::configure(DeploymentDatabase->new);
-    is($ENV{TZ}, 'Asia/Shanghai', 'DB_TZ does not change the application time zone');
+    is($ENV{TZ}, 'Asia/Shanghai', 'database configuration does not rewrite the application time zone');
 };
 
 subtest 'invalid names, SQL injection and offset ranges fail before SQL' => sub {
@@ -96,8 +94,7 @@ subtest 'invalid names, SQL injection and offset ranges fail before SQL' => sub 
         "Asia/Shanghai\0",
         'Asia/Shanghai ' , '+14:01', '-14:00', '+08:60', '+99:00', '+08',
     ) {
-        local $ENV{TZ} = 'Asia/Shanghai';
-        local $ENV{DB_TZ} = $timezone;
+        local $ENV{TZ} = $timezone;
         my $database = DeploymentDatabase->new;
         my $success = eval { Core::Sql::Data::configure($database); 1 };
         ok(!$success, 'invalid environment value is rejected');
@@ -108,14 +105,14 @@ subtest 'invalid names, SQL injection and offset ranges fail before SQL' => sub 
 
 subtest 'missing MySQL named time zone stops configuration without a fallback' => sub {
     local $ENV{TZ} = 'Asia/Shanghai';
-    local $ENV{DB_TZ} = '';
     my $database = DeploymentDatabase->new(reject_timezone => 1);
     my $success = eval { Core::Sql::Data::configure($database); 1 };
     ok(!$success, 'a failed SET is fatal even when the driver returns undef');
     like($@, qr/数据库时区设置失败.*Asia\/Shanghai/, 'error identifies the rejected time zone');
-    like($@, qr/DB_TZ/, 'error describes the explicit override');
+    like($@, qr/TZ 配置/, 'error identifies the official time zone setting');
     is_deeply($database->{calls}[-1], ['SET time_zone = ?', undef, 'Asia/Shanghai'],
         'failure never retries with a different time zone');
+    is(scalar @{$database->{calls}}, 3, 'failed named time zone has no fallback statement');
 };
 
 {
