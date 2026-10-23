@@ -1705,7 +1705,7 @@ route_methods(['/user/epay/reconcile', '/admin/epay/reconcile'], {
         params => {
             host   => { type => 'string', required => 1, min_length => 1, max_length => 255 },
             key_id => { type => 'integer', required => 1, min => 1 },
-            server_id => { type => 'integer', required => 1, min => 1 },
+            server_id => { type => 'integer', min => 1 },
             template_id => { type => 'string', min_length => 1 },
             cmd => { type => 'string', min_length => 1 },
             event_name => { type => 'string', min_length => 1},
