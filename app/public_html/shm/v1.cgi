@@ -98,6 +98,77 @@ state $routes //= {
         },
     },
 },
+'/user/service/consumption' => {
+    swagger => { tags => '用户服务' },
+    GET => {
+        controller => 'Consumption',
+        method => 'snapshot_for_api',
+        params => {
+            user_service_id => { type => 'integer', required => 1, min => 1 },
+            withdraw_id => { type => 'integer', min => 1 },
+        },
+        swagger => { summary => '查看预付套餐消费比例和可退款余额' },
+    },
+},
+'/admin/consumption' => {
+    swagger => { tags => '计量' },
+    GET => {
+        controller => 'Consumption',
+        method => 'snapshot_for_api',
+        params => {
+            user_service_id => { type => 'integer', required => 1, min => 1 },
+            withdraw_id => { type => 'integer', min => 1 },
+        },
+        swagger => { summary => '查看指定计费周期的消费快照' },
+    },
+},
+'/admin/consumption/generation' => {
+    swagger => { tags => '计量' },
+    POST => {
+        controller => 'Consumption',
+        method => 'admin_start_generation',
+        params => {
+            user_service_id => { type => 'integer', required => 1, min => 1 },
+            withdraw_id => { type => 'integer', required => 1, min => 1 },
+            meter => { type => 'string', required => 1, max_length => 64 },
+            generation => { type => 'string', required => 1, max_length => 128 },
+            record_id => { type => 'string', required => 1, max_length => 128 },
+            baseline => { type => 'string', required => 1, max_length => 39, pattern => '^\d{1,26}(?:\.\d{1,12})?$' },
+            observed_at => { type => 'string', pattern => '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$' },
+        },
+        swagger => { summary => '提交计量代次的初始累计读数' },
+    },
+},
+'/admin/consumption/reading' => {
+    swagger => { tags => '计量' },
+    POST => {
+        controller => 'Consumption',
+        method => 'admin_ingest',
+        params => {
+            user_service_id => { type => 'integer', required => 1, min => 1 },
+            withdraw_id => { type => 'integer', required => 1, min => 1 },
+            meter => { type => 'string', required => 1, max_length => 64 },
+            generation => { type => 'string', required => 1, max_length => 128 },
+            record_id => { type => 'string', required => 1, max_length => 128 },
+            cumulative => { type => 'string', required => 1, max_length => 39, pattern => '^\d{1,26}(?:\.\d{1,12})?$' },
+            observed_at => { type => 'string', pattern => '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$' },
+        },
+        swagger => { summary => '提交通用计量的累计读数' },
+    },
+},
+'/admin/consumption/finalize' => {
+    swagger => { tags => '计量' },
+    POST => {
+        controller => 'Consumption',
+        method => 'admin_finalize',
+        params => {
+            user_service_id => { type => 'integer', required => 1, min => 1 },
+            withdraw_id => { type => 'integer', required => 1, min => 1 },
+            cutoff => { type => 'string', required => 1, pattern => '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$' },
+        },
+        swagger => { summary => '外部资源停止且读数完整后固定结算截止点' },
+    },
+},
 '/user/captcha' => {
     swagger => { tags => '验证码' },
     GET => {

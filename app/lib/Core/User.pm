@@ -971,19 +971,6 @@ sub delete {
         return undef;
     }
 
-    unless ( $args{force} ) {
-        if ( $self->get_balance ) {
-            $report->add_error("Can't delete user with non-zero balance");
-            return undef;
-        }
-
-        my @usi = $self->services->list_for_api();
-        if ( scalar @usi ) {
-            $report->add_error("Can't delete user with services");
-            return undef;
-        }
-    }
-
     my @objects = qw(
         UserService
         withdraw
@@ -999,6 +986,31 @@ sub delete {
         promo
         User::Logins
     );
+
+    # Local extensions can retain audit records through restrictive foreign
+    # keys. Check them before deleting any of the user's managed objects.
+    my @managed_tables = map { get_service($_, user_id => $self->id)->table } @objects;
+    if ($self->has_external_references(table => 'users', column => 'user_id',
+            value => $self->id, ignore_tables => \@managed_tables)
+        || $self->dbh->selectrow_array('SELECT 1 FROM consumption_periods WHERE user_id=? LIMIT 1', undef, $self->id)) {
+        $report->status(409);
+        $report->add_error('用户存在外部业务引用或冻结计费记录，不能直接删除，请停用账户并保留账务记录');
+        return undef;
+    }
+
+    unless ( $args{force} ) {
+        if ( $self->get_balance ) {
+            $report->add_error("Can't delete user with non-zero balance");
+            return undef;
+        }
+
+        my @usi = $self->services->list_for_api();
+        if ( scalar @usi ) {
+            $report->add_error("Can't delete user with services");
+            return undef;
+        }
+    }
+
 
     get_service( $_, user_id => $self->id )->delete_all for @objects;
 

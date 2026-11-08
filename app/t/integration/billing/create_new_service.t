@@ -9,6 +9,8 @@ $ENV{TZ} = 'Europe/Moscow';
 tzset;
 
 use Test::MockTime;
+# Load the entrypoint environment before this fixture selects Moscow time.
+use Core::Config;
 Test::MockTime::set_fixed_time('2016-12-31T21:00:00Z'); # Sun Jan  1 00:00:00 2017
 
 use Core::Const;
