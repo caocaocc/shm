@@ -1,6 +1,7 @@
 package Core::Identities;
 
 use v5.14;
+use utf8;
 use parent 'Core::Base';
 use Core::Base;
 use File::Temp;
@@ -18,26 +19,26 @@ sub structure {
         id => {
             type => 'number',
             key => 1,
-            title => 'id ключа',
+            title => '密钥 ID',
         },
         name => {
             type => 'text',
             required => 1,
-            title => 'имя ключа',
+            title => '密钥名称',
         },
         private_key => {
             type => 'text',
             required => 1,
-            title => 'приватный ключ',
+            title => '私钥',
         },
         public_key => {
             type => 'text',
-            title => 'публичный ключ',
+            title => '公钥',
         },
         fingerprint => {
             type => 'text',
             required => 1,
-            title => 'отпечаток ключа',
+            title => '密钥指纹',
         },
     }
 }

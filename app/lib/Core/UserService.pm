@@ -1,6 +1,7 @@
 package Core::UserService;
 
 use v5.14;
+use utf8;
 use parent 'Core::USObject';
 use Core::Base;
 use Core::Const;
@@ -344,7 +345,7 @@ sub domains {
 sub activate_services {
     my $self = shift;
 
-    return FAIL, { error => 'Некоторые услуги в статусе: "PROGRESS", ждем...' } if $self->has_services_progress;
+    return FAIL, { error => '部分服务处于 "PROGRESS" 状态，请等待…' } if $self->has_services_progress;
 
     my @list = $self->list(
         where => {

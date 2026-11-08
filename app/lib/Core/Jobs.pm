@@ -1,6 +1,7 @@
 package Core::Jobs;
 
 use v5.14;
+use utf8;
 use parent 'Core::Base';
 use Core::Base;
 use Core::Const;
@@ -20,11 +21,11 @@ sub job_prolongate {
 
     my @arr = get_service('UserService')->list_expired_services( admin => 1 );
     unless ( scalar @arr ) {
-        return SKIP, { msg => 'Нет задач в данный момент' };
+        return SKIP, { msg => '当前没有待处理任务' };
     }
 
     my $queue_id = get_service('SpoolQueue')->add(
-        name       => 'Продление услуг',
+        name       => '服务续费',
         $settings{rate_limit} ? ( rate_limit => $settings{rate_limit} ) : (),
     );
 
@@ -44,7 +45,7 @@ sub job_prolongate {
             queue_id => $queue_id,
             event => {
                 name => 'SYSTEM',
-                title => sprintf("Продление услуги (us_id=%d)", $_->{user_service_id} ),
+                title => sprintf("服务续费（us_id=%d）", $_->{user_service_id} ),
                 kind => 'Jobs',
                 method => 'job_prolongate_event',
                 task_id => $task->id,
@@ -55,7 +56,7 @@ sub job_prolongate {
         );
     }
 
-    return SUCCESS, { msg => 'Задачи созданы', queue_id => $queue_id };
+    return SUCCESS, { msg => '任务已创建', queue_id => $queue_id };
 }
 
 sub job_prolongate_event {
@@ -72,7 +73,7 @@ sub job_prolongate_event {
     }
     $us->touch;
 
-    return SUCCESS, { msg => sprintf("Услуга продлена (us_id=%d)", $us->id) };
+    return SUCCESS, { msg => sprintf("服务已续费（us_id=%d）", $us->id) };
 }
 
 sub job_cleanup {
@@ -115,11 +116,11 @@ sub job_make_forecasts {
     );
 
     unless ( scalar @$user_candidates ) {
-        return SKIP, { msg => 'Нет задач в данный момент' };
+        return SKIP, { msg => '当前没有待处理任务' };
     }
 
     my $queue_id = get_service('SpoolQueue')->add(
-        name       => 'Прогноз оплаты',
+        name       => '续费预测',
         $settings{rate_limit} ? ( rate_limit => $settings{rate_limit} ) : (),
     );
 
@@ -130,7 +131,7 @@ sub job_make_forecasts {
             queue_id => $queue_id,
             event => {
                 name => 'SYSTEM',
-                title => sprintf("Прогноз оплаты (user_id=%d)", $u->{user_id}),
+                title => sprintf("续费预测（user_id=%d）", $u->{user_id}),
                 kind => 'Jobs',
                 method => 'job_make_forecast_event',
                 task_id => $task->id,
@@ -143,7 +144,7 @@ sub job_make_forecasts {
         );
     }
 
-    return SUCCESS, { msg => 'Задачи созданы', queue_id => $queue_id };
+    return SUCCESS, { msg => '任务已创建', queue_id => $queue_id };
 }
 
 sub job_make_forecast_event {
@@ -161,8 +162,8 @@ sub job_make_forecast_event {
     if ( my $last_check_date = $u->get_settings->{forecast}->{last_check_date} ) {
         my $next_check_date = add_period( $last_check_date, $notify_cooldown );
         if ( now() lt $next_check_date ) {
-            $self->logger->info("Пропускаем forecast для " . $u->id . ": следующий forecast разрешен после $next_check_date");
-            return SKIP, { msg => 'Защита от частых уведомлений. Отложено до: ' . $next_check_date };
+            $self->logger->info("跳过用户的续费预测：" . $u->id . "：下次允许生成续费预测的时间为 $next_check_date");
+            return SKIP, { msg => '为避免重复通知，已延迟至：' . $next_check_date };
         }
     }
 
@@ -179,10 +180,10 @@ sub job_make_forecast_event {
 
     if ( $ret->{total} ) {
         $u->make_event( 'forecast', settings => { forecast => $ret } );
-        return SUCCESS, { msg => 'Событе активировано. К оплате: '. $ret->{total} };
+        return SUCCESS, { msg => '事件已触发，应付金额：'. $ret->{total} };
     }
 
-    return SKIP, { msg => 'Пропуск, оплата не требуется' };
+    return SKIP, { msg => '已跳过，无需支付' };
 }
 
 sub job_users {

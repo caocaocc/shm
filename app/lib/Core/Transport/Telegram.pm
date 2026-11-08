@@ -251,7 +251,7 @@ sub task_send {
 
     unless ( scalar $self->user_profiles() ) {
         return SUCCESS, {
-            error => "Пользователь ещё не добавил этого бота",
+            error => "用户尚未添加此机器人",
         }
     }
 
@@ -265,7 +265,7 @@ sub task_send {
             response => sub { $self->response },
         },
     );
-    return SUCCESS, { msg => "Шаблон не содержит данных" } unless $message;
+    return SUCCESS, { msg => "模板没有数据" } unless $message;
 
     if ( my $tg_method = $tpl_settings_tg->{raw} ) {
         my $json = decode_json( $message );
@@ -313,22 +313,22 @@ sub send {
         $self->profile( $profile );
 
         unless ( $self->{chat_id} ) {
-            push @ret, { error => "chat_id не найден", profile => $profile };
+            push @ret, { error => "未找到 chat_id", profile => $profile };
             next;
         }
 
         unless ( $self->{token} ) {
-            push @ret, { error => "token не найден", profile => $profile };
+            push @ret, { error => "未找到 token", profile => $profile };
             next;
         }
 
         if ( $self->user_tg_settings->{status} eq 'kicked' || $self->user_tg_settings->{status} eq 'left' ) {
-            push @ret, { msg => "Пользователь заблокировал Telegram bot", profile => $profile };
+            push @ret, { msg => "用户已屏蔽 Telegram 机器人", profile => $profile };
             next;
         }
 
         if ( $self->user_tg_settings->{status} eq 'chat_not_found' ) {
-            push @ret, { msg => "Чат с ботом не найден: пользователь ещё не запустил бота", profile => $profile };
+            push @ret, { msg => "未找到机器人会话：用户尚未启动机器人", profile => $profile };
             next;
         }
 
@@ -408,7 +408,7 @@ sub bot {
     $self->profile( $template_id ) unless $self->profile_name;
 
     unless ( $self->chat_id ) {
-        logger->error('chat_id не найден');
+        logger->error('未找到 chat_id');
         return undef;
     }
 
@@ -1192,7 +1192,7 @@ sub process_message {
             method => 'sendMessage',
             chat_id => $self->{chat_id},
             parse_mode => 'MarkdownV2',
-            text => sprintf("Ошибка: шаблон `%s` не найден",
+            text => sprintf("错误：未找到模板 `%s`",
                 $args{template},
             )
         }
@@ -1203,7 +1203,7 @@ sub process_message {
             method => 'sendMessage',
             chat_id => $self->{chat_id},
             parse_mode => 'MarkdownV2',
-            text => sprintf("Ошибка: [token](%s) не найден\nПрофиль: `%s`\nchat\\_id: `%s`",
+            text => sprintf("错误：未找到 [token](%s)\n用户资料：`%s`\nchat\\_id：`%s`",
                 'https://docs.myshm.ru/docs/setup/servers/transport/telegram/',
                 $self->profile,
                 $chat_id,

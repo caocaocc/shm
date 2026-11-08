@@ -19,25 +19,25 @@ sub structure {
             type => 'number',
             auto_fill => 1,
             key_mul => 1,
-            title => 'id пользователя',
+            title => '用户 ID',
         },
         name => {
             type => 'text',
             key => 1,
-            title => 'имя ключа',
+            title => '密钥名称',
         },
         created => {
             type => 'text',
-            title => 'дата создания',
+            title => '创建时间',
             readOnly => 1,
         },
         user_service_id => {
             type => 'number',
-            title => 'id услуги пользователя',
+            title => '用户服务 ID',
         },
         data => {
             type => 'text',
-            title => 'данные',
+            title => '数据',
         },
         settings => { type => 'json', value => {} },
     }

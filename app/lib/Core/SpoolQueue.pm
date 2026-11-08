@@ -1,6 +1,7 @@
 package Core::SpoolQueue;
 
 use v5.14;
+use utf8;
 use parent qw/Core::Base/;
 use Core::Base;
 use Core::Const;
@@ -22,47 +23,47 @@ sub structure {
         id => {
             type  => 'number',
             key   => 1,
-            title => 'id очереди',
+            title => '队列 ID',
         },
         name => {
             type     => 'text',
             required => 1,
-            title    => 'название очереди',
+            title    => '队列名称',
         },
         rate_limit => {
             type        => 'number',
-            title       => 'максимальное количество задач в секунду',
-            description => 'NULL — без ограничений',
+            title       => '每秒最大任务数',
+            description => 'NULL 表示不限制',
         },
         status => {
             type    => 'text',
             default => 'active',
             enum    => [ 'active', 'paused' ],
-            title   => 'статус очереди',
+            title   => '队列状态',
         },
         last_executed_at => {
             type     => 'date',
-            title    => 'время последнего выполнения задачи из очереди',
+            title    => '队列任务最后执行时间',
             readOnly => 1,
         },
         created_at => {
             type     => 'now',
-            title    => 'дата создания очереди',
+            title    => '队列创建时间',
             readOnly => 1,
         },
         finished_at => {
             type     => 'date',
-            title    => 'дата завершения очереди',
+            title    => '队列完成时间',
             readOnly => 1,
         },
-        total_added  => { type => 'number', default => 0, title => 'всего добавлено задач',    readOnly => 1 },
-        cnt_success  => { type => 'number', default => 0, title => 'выполнено успешно',        readOnly => 1 },
-        cnt_fail     => { type => 'number', default => 0, title => 'завершено с ошибкой',      readOnly => 1 },
-        cnt_delayed  => { type => 'number', default => 0, title => 'отложено',                 readOnly => 1 },
-        cnt_stuck    => { type => 'number', default => 0, title => 'зависло',                  readOnly => 1 },
-        cnt_paused   => { type => 'number', default => 0, title => 'поставлено на паузу',      readOnly => 1 },
-        cnt_skipped  => { type => 'number', default => 0, title => 'пропущено',                readOnly => 1 },
-        cnt_pending  => { type => 'number', default => 0, title => 'ожидают выполнения',       readOnly => 1 },
+        total_added  => { type => 'number', default => 0, title => '累计任务数',    readOnly => 1 },
+        cnt_success  => { type => 'number', default => 0, title => '执行成功',        readOnly => 1 },
+        cnt_fail     => { type => 'number', default => 0, title => '执行失败',      readOnly => 1 },
+        cnt_delayed  => { type => 'number', default => 0, title => '已延迟',                 readOnly => 1 },
+        cnt_stuck    => { type => 'number', default => 0, title => '任务异常',                  readOnly => 1 },
+        cnt_paused   => { type => 'number', default => 0, title => '已暂停',      readOnly => 1 },
+        cnt_skipped  => { type => 'number', default => 0, title => '已跳过',                readOnly => 1 },
+        cnt_pending  => { type => 'number', default => 0, title => '等待执行',       readOnly => 1 },
     }
 }
 

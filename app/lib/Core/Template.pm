@@ -10,6 +10,7 @@ use Template::Stash;
 use File::Find qw(find);
 use File::Basename;
 use File::Path qw(make_path);
+use Encode ();
 
 use Core::Utils qw(
     encode_json_perl
@@ -67,11 +68,11 @@ sub structure {
         id => {
             type => 'text',
             key => 1,
-            title => 'имя шаблона',
+            title => '模板名称',
         },
         data => {
             type => 'text',
-            title => 'шаблон',
+            title => '模板',
         },
         settings => { type => 'json', value => {} },
     }
@@ -161,6 +162,10 @@ sub parse {
             # for compatibility with other Cyrillic texts in the templates
             return encode_json_perl( $data );
         },
+        toBase64Url => sub {
+            my $value = shift;
+            return encode_base64url(utf8::is_utf8($value) ? Encode::encode_utf8($value) : $value);
+        },
         fromJson => sub {
             my $data = shift;
             return decode_json( $data );
@@ -170,7 +175,6 @@ sub parse {
             return Dumper( @_ );
         },
         toQueryString => sub { to_query_string( shift ) },
-        toBase64Url => sub { encode_base64url( shift ) },
         fromBase64Url => sub { decode_base64url( shift ) },
 
         # for filter()

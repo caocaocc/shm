@@ -926,16 +926,16 @@ sub format_time_diff {
 
     my @parts;
 
-    push @parts, "$Dy " . ($Dy == 1 ? 'год' : $Dy >= 2 && $Dy <= 4 ? 'года' : 'лет') if $Dy;
-    push @parts, "$Dm " . ($Dm == 1 ? 'месяц' : $Dm >= 2 && $Dm <= 4 ? 'месяца' : 'месяцев') if $Dm;
-    push @parts, "$Dd " . (($Dd % 10 == 1 && $Dd % 100 != 11) ? 'день'
-                     : ($Dd % 10 >= 2 && $Dd % 10 <= 4 && ($Dd % 100 < 10 || $Dd % 100 >= 20)) ? 'дня' : 'дней') if $Dd;
-    push @parts, "$Dh " . (($Dh % 10 == 1 && $Dh % 100 != 11) ? 'час'
-                     : ($Dh % 10 >= 2 && $Dh % 10 <= 4 && ($Dh % 100 < 10 || $Dh % 100 >= 20)) ? 'часа' : 'часов') if $Dh;
-    push @parts, "$Dmin " . (($Dmin % 10 == 1 && $Dmin % 100 != 11) ? 'минута'
-                     : ($Dmin % 10 >= 2 && $Dmin % 10 <= 4 && ($Dmin % 100 < 10 || $Dmin % 100 >= 20)) ? 'минуты' : 'минут') if $Dmin;
+    push @parts, "$Dy " . ($Dy == 1 ? '年' : $Dy >= 2 && $Dy <= 4 ? '年' : '年') if $Dy;
+    push @parts, "$Dm " . ($Dm == 1 ? '个月' : $Dm >= 2 && $Dm <= 4 ? '个月' : '个月') if $Dm;
+    push @parts, "$Dd " . (($Dd % 10 == 1 && $Dd % 100 != 11) ? '天'
+                     : ($Dd % 10 >= 2 && $Dd % 10 <= 4 && ($Dd % 100 < 10 || $Dd % 100 >= 20)) ? '天' : '天') if $Dd;
+    push @parts, "$Dh " . (($Dh % 10 == 1 && $Dh % 100 != 11) ? '小时'
+                     : ($Dh % 10 >= 2 && $Dh % 10 <= 4 && ($Dh % 100 < 10 || $Dh % 100 >= 20)) ? '小时' : '小时') if $Dh;
+    push @parts, "$Dmin " . (($Dmin % 10 == 1 && $Dmin % 100 != 11) ? '分钟'
+                     : ($Dmin % 10 >= 2 && $Dmin % 10 <= 4 && ($Dmin % 100 < 10 || $Dmin % 100 >= 20)) ? '分钟' : '分钟') if $Dmin;
 
-    return @parts ? join(', ', @parts[0..2]) : 'менее минуты';
+    return @parts ? join(', ', @parts[0..2]) : '不足一分钟';
 }
 
 sub uniq_by_key {

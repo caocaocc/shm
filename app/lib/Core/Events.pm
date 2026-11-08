@@ -1,6 +1,7 @@
 package Core::Events;
 
 use v5.14;
+use utf8;
 use parent 'Core::Base';
 use Core::Base;
 use Core::Const;
@@ -12,28 +13,28 @@ sub structure {
         id => {
             type => 'number',
             key => 1,
-            title => 'id события',
+            title => '事件 ID',
         },
         kind => {
             type => 'text',
             default => 'UserService',
-            title => 'контроллер события',
+            title => '事件控制器',
         },
         title => {
             type => 'text',
             required => 1,
-            title => 'название события',
+            title => '事件名称',
         },
         name => {           # create,block,unblock...
             type => 'text',
             required => 1,
             enum => [EVENT_CREATE,EVENT_BLOCK,EVENT_REMOVE,EVENT_PROLONGATE,EVENT_ACTIVATE,EVENT_NOT_ENOUGH_MONEY,EVENT_CHANGED,EVENT_CHANGED_TARIFF],
-            title => 'событие',
+            title => '事件',
         },
         server_gid => {     # Group_id of servers
             type => 'number',
             default => 0,
-            title => 'id группы серверов',
+            title => '服务器组 ID',
         },
         settings => {
             type => 'json',

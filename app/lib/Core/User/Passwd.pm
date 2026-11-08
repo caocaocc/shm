@@ -1,6 +1,7 @@
 package Core::User::Passwd;
 
 use v5.14;
+use utf8;
 
 use Core::Base;
 use Digest::SHA qw(sha1_hex sha256_hex hmac_sha512);
@@ -222,12 +223,12 @@ sub passwd_reset_request {
     );
 
     my $subject = $self->render_mail_text(
-        text => cfg('mail')->{reset_password}->{subject} || "$project_name - Сброс пароля",
+        text => cfg('mail')->{reset_password}->{subject} || "$project_name - 密码重置",
         vars => \%mail_vars,
     );
 
     my $message = $self->render_mail_text(
-        text => cfg('mail')->{reset_password}->{message} || "Ваша ссылка для сброса пароля: {{ link }}\n\nСсылка действительна в течение часа.",
+        text => cfg('mail')->{reset_password}->{message} || "您的密码重置链接：{{ link }}\n\n链接有效期为一小时。",
         vars => \%mail_vars,
     );
 

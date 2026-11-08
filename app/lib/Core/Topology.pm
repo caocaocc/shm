@@ -13,11 +13,11 @@ our $CACHE_TTL      = 7 * 86400;
 our $GRAPH_VER      = 8;
 
 our %EVENT_NAMES = (
-    registered => 'Регистрация пользователя', create => 'Создание услуги', activate => 'Активация услуги',
-    block => 'Блокировка услуги', remove => 'Удаление услуги', prolongate => 'Продление услуги',
-    payment => 'Поступление платежа', bonus => 'Начисление бонуса', changed => 'Изменение статуса услуги',
-    changed_tariff => 'Смена тарифа', forecast => 'Прогноз оплаты', not_enough_money => 'Недостаточно средств',
-    user_password_reset => 'Сброс пароля', touch => 'Touch услуги',
+    registered => '用户注册', create => '创建服务', activate => '启用服务',
+    block => '停用服务', remove => '删除服务', prolongate => '服务续期',
+    payment => '支付入账', bonus => '发放奖励', changed => '服务状态变更',
+    changed_tariff => '更换套餐', forecast => '付款预测', not_enough_money => '余额不足',
+    user_password_reset => '重置密码', touch => '触发服务事件',
 );
 
 sub library {
@@ -164,7 +164,7 @@ sub public_list {
 
 sub clear_cache {
     my $self = shift;
-    my $cache = $self->_cache or return { success => 0, message => 'Redis недоступен' };
+    my $cache = $self->_cache or return { success => 0, message => 'Redis 不可用' };
     my @keys = $cache->redis->keys( $CACHE_PREFIX . '*' );
     $cache->redis->del(@keys) if @keys;
     return { success => 1, keys_cleared => scalar @keys };
@@ -219,10 +219,10 @@ sub category {
     $self->{g}{matched_services}{ $_->{service_id} } = 1 for @svc;
     my @cats = do { my %s; grep { !$s{$_}++ } map { $_->{category} // '' } @svc };
     $self->node( $uid, type => 'category', key => $pattern,
-        title => $pattern eq '%' ? 'Любая категория (%)' : $pattern,
-        subtitle => @svc ? scalar(@svc) . ' ' . _plural( scalar @svc, 'услуга', 'услуги', 'услуг' ) . ( $pattern =~ /[%_]/ ? ' · ' . join( ', ', @cats[ 0 .. ( $#cats < 4 ? $#cats : 4 ) ] ) . ( @cats > 5 ? '…' : '' ) : '' )
-                    : 'нет услуг с такой категорией',
-        content => join( "\n", map { "#$_->{service_id} $_->{name}" } @svc[ 0 .. ( $#svc < 11 ? $#svc : 11 ) ] ) . ( @svc > 12 ? "\n… ещё " . ( @svc - 12 ) : '' ),
+        title => $pattern eq '%' ? '任意分类（%）' : $pattern,
+        subtitle => @svc ? scalar(@svc) . ' ' . _plural( scalar @svc, '项服务', '项服务', '项服务' ) . ( $pattern =~ /[%_]/ ? ' · ' . join( ', ', @cats[ 0 .. ( $#cats < 4 ? $#cats : 4 ) ] ) . ( @cats > 5 ? '…' : '' ) : '' )
+                    : '没有此分类的服务',
+        content => join( "\n", map { "#$_->{service_id} $_->{name}" } @svc[ 0 .. ( $#svc < 11 ? $#svc : 11 ) ] ) . ( @svc > 12 ? "\n…另有 " . ( @svc - 12 ) : '' ),
         meta => { pattern => $pattern, services => [ map { _svc($_) } @svc ], empty => @svc ? 0 : 1 } );
     return $uid;
 }
@@ -245,11 +245,11 @@ sub group {
     my $g = $self->server_groups->{$gid};
     my @srv = grep { ( $_->{server_gid} // '' ) eq $gid } $self->servers;
     $self->node( $uid, type => 'group', key => $gid,
-        title => $g ? $g->{name} : "Группа #$gid",
-        subtitle => $g ? join( ' · ', grep { $_ } $g->{transport}, 'выбор: ' . ( $g->{type} // 'random' ) ) : 'группы нет в SHM',
+        title => $g ? $g->{name} : "服务器组 #$gid",
+        subtitle => $g ? join( ' · ', grep { $_ } $g->{transport}, '选择方式：' . ( $g->{type} // 'random' ) ) : 'SHM 中不存在此服务器组',
         meta => { group_id => $gid + 0, transport => $g ? $g->{transport} : undef, pick => $g ? $g->{type} : undef,
                   missing => $g ? 0 : 1, servers_total => scalar @srv, servers_enabled => scalar grep { $_->{enabled} } @srv } );
-    $self->edge( $uid, $self->server($_), 'route', $_->{enabled} ? '' : 'выключен' ) for @srv;
+    $self->edge( $uid, $self->server($_), 'route', $_->{enabled} ? '' : '已禁用' ) for @srv;
     return $uid;
 }
 
@@ -260,7 +260,7 @@ sub server {
     my $st = ref $s->{settings} eq 'HASH' ? $s->{settings} : {};
     my $max = $st->{max_services};
     $self->node( $uid, type => 'server', key => $s->{server_id},
-        title => $s->{name} || "Сервер #$s->{server_id}",
+        title => $s->{name} || "服务器 #$s->{server_id}",
         subtitle => join( ' · ', grep { defined && length } $s->{transport}, $s->{host} ),
         meta => {
             server_id => $s->{server_id} + 0, transport => $s->{transport}, host => $s->{host}, enabled => $s->{enabled} ? 1 : 0,
@@ -269,7 +269,7 @@ sub server {
             key_id => $st->{key_id}, template_id => $st->{template_id},
         } );
     if ( my $t = $st->{template_id} ) {
-        $self->edge( $uid, $self->template($t), 'calls', 'шаблон по умолчанию' );
+        $self->edge( $uid, $self->template($t), 'calls', '默认模板' );
     }
     return $uid;
 }
@@ -309,7 +309,7 @@ sub rule {
     my $target;
     if ($tpl) {
         $target = $self->template($tpl);
-        $self->edge( $target, $self->group($gid), 'route', $g ? ( $g->{transport} // '' ) : 'нет группы' ) if defined $gid;
+        $self->edge( $target, $self->group($gid), 'route', $g ? ( $g->{transport} // '' ) : '缺少服务器组' ) if defined $gid;
     }
     elsif ( defined $gid ) {
         $target = $self->group($gid);    # команда (cmd) или шаблон сервера по умолчанию
@@ -329,7 +329,7 @@ sub unmatched_services {
     my @svc = grep { !$self->{g}{matched_services}{ $_->{service_id} } } $self->services;
     return unless @svc;
     $self->node( 'cat:!none', type => 'category', key => '',
-        title => 'Услуги без событий', subtitle => scalar(@svc) . ' ' . _plural( scalar @svc, 'услуга', 'услуги', 'услуг' ) . ' — ни одно правило не подходит по категории',
+        title => '未配置事件的服务', subtitle => scalar(@svc) . ' ' . _plural( scalar @svc, '项服务', '项服务', '项服务' ) . ' — 没有规则匹配此分类',
         content => join( "\n", map { "#$_->{service_id} $_->{name} ($_->{category})" } @svc[ 0 .. ( $#svc < 11 ? $#svc : 11 ) ] ),
         meta => { services => [ map { _svc($_) } @svc ], unmatched => 1 } );
 }
@@ -341,7 +341,7 @@ sub bots {
         my $p = $self->telegram_profiles->{$name};
         my $has_tpl = $self->library->{$name} ? 1 : 0;
         my ($bn) = $self->node( "bot:$name", type => 'bot', key => $name, title => $name,
-            subtitle => 'Telegram-бот',
+            subtitle => 'Telegram 机器人',
             meta => { profile => $name, chat_id => $p->{chat_id}, has_token => $p->{has_token}, has_template => $has_tpl ? 1 : 0 } );
         $self->edge( $bn, $self->template($name), 'handler', '' ) if $has_tpl && !$p->{chat_id};
     }
@@ -351,7 +351,7 @@ sub public {
     my ( $self, $name ) = @_;
     my $tn = $self->template($name);
     my ($en) = $self->node( "entry:$name", type => 'entry', key => $name, title => "/shm/v1/public/$name",
-        subtitle => 'публичный HTTP-вход', meta => { template => $name } );
+        subtitle => '公开 HTTP 入口', meta => { template => $name } );
     $self->edge( $en, $tn, 'handler', '' );
 }
 
@@ -367,7 +367,7 @@ sub template {
         $meta{public} = 1 if $st->{allow_public};
     }
     my ($nid) = $self->node( "tpl:$name", type => 'template', key => $name, title => $name,
-        subtitle => $meta{missing} ? 'шаблона нет в SHM' : $meta{public} ? 'публичный шаблон' : '', meta => \%meta );
+        subtitle => $meta{missing} ? 'SHM 中不存在此模板' : $meta{public} ? '公开模板' : '', meta => \%meta );
     return $nid;
 }
 

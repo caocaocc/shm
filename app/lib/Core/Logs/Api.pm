@@ -40,11 +40,11 @@ sub structure {
         user_id => {
             type => 'number',
             auto_fill => 1,
-            title => 'id пользователя',
+            title => '用户 ID',
         },
         date => {
             type => 'now',
-            title => 'дата',
+            title => '日期',
         },
         url => {
             type => 'text',
@@ -54,33 +54,33 @@ sub structure {
         method => {
             type => 'text',
             required => 1,
-            title => 'метод',
+            title => '方法',
         },
         args => {
             type => 'json',
-            title => 'аргументы',
+            title => '参数',
         },
         descr => {
             type => 'text',
-            title => 'описание',
+            title => '说明',
         },
         duration => {
             type => 'number',
             default => 0,
-            title => 'продолжительность',
+            title => '耗时',
         },
         response_code => {
             type => 'number',
             required => 1,
-            title => 'код ответа',
+            title => '响应代码',
         },
         ip => {
             type => 'text',
-            title => 'IP адрес',
+            title => 'IP 地址',
         },
         response_error => {
             type => 'text',
-            title => 'ошибка',
+            title => '错误',
         },
     }
 }

@@ -1,6 +1,7 @@
 package Core::ServerGroups;
 
 use v5.14;
+use utf8;
 use parent 'Core::Base';
 use Core::Base;
 use Core::Const;
@@ -14,23 +15,23 @@ sub structure {
         group_id => {
             type => 'number',
             key => 1,
-            title => 'id группы'
+            title => '组 ID'
         },
         name => {
             type => 'text',
-            title => 'произвольное название группы',
+            title => '自定义组名称',
         },
         type => {
             type => 'text',
             default => 'random',
             enum => ['random','by-one','evenly'],
-            title => 'способ выборки сервера',
+            title => '服务器选择方式',
         },
         transport => {
             type => 'text',
             default => 'ssh',
             enum => ['ssh','http','telegram','mail','local'],
-            title => 'транспорт',
+            title => '传输方式',
         },
         settings => {
             type => 'text',
