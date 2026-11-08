@@ -11,9 +11,14 @@ use Core::Utils qw(
 use Core::Sql::Data;
 use version;
 use JSON::PP;
+use Core::ServiceOptions ();
+
 binmode STDOUT, ':encoding(UTF-8)';
 binmode STDERR, ':encoding(UTF-8)';
 
+# This is the existing shared data volume, initialized before API/spool drop
+# privileges. Do not change permissions on any other application data.
+Core::ServiceOptions->initialize_storage;
 
 my $sql = Core::Sql::Data->new;
 my $migration_boundary_version = version->parse('0.2.17');

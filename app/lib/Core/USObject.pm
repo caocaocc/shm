@@ -182,7 +182,20 @@ sub settings {
 
 sub settings_save {
     my $self = shift;
-    $self->set( settings => $self->settings );
+    # Existing transports may hold an older settings object. Preserve the
+    # latest private subtree; only Core::ServiceOptions writes that subtree.
+    my %settings = %{$self->settings};
+    delete $settings{options};
+    my $json = Core::Utils::encode_json(\%settings);
+    my $result = $self->dbh->do(q{
+        UPDATE user_services SET settings=CASE
+            WHEN JSON_CONTAINS_PATH(settings,'one','$.options')
+            THEN JSON_SET(CAST(? AS JSON),'$.options',JSON_EXTRACT(settings,'$.options'))
+            ELSE CAST(? AS JSON) END
+        WHERE user_service_id=? AND user_id=?
+    }, undef, $json, $json, $self->id, $self->get_user_id);
+    $self->reload;
+    return $result;
 }
 
 sub add {
@@ -212,8 +225,9 @@ sub api_add_description {
 
     return undef unless $self->id;
 
-    $self->settings( { description => $args{description} } );
-    $self->settings_save();
+    $self->dbh->do(q{UPDATE user_services SET settings=JSON_SET(COALESCE(settings,JSON_OBJECT()), '$.description', ?) WHERE user_service_id=? AND user_id=?},
+        undef, $args{description}, $self->id, $self->get_user_id);
+    $self->reload;
 
     $args{fields} = q(
         user_services.*,
@@ -756,6 +770,9 @@ sub status {
                 $self->settings( { server_id => undef } )->settings_save();
             }
         }
+
+        get_service('ServiceOptions')->lifecycle_changed($self, $status)
+            if $status eq STATUS_ACTIVE || $status eq STATUS_REMOVED;
 
         if ( my $parent = $self->parent ) {
             $parent->child_status_updated(

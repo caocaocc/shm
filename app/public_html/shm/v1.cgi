@@ -22,6 +22,7 @@ use Core::Utils qw(
 use CGI::Carp qw(fatalsToBrowser);
 use Data::Dumper;
 use Time::HiRes ();
+use URI ();
 
 sub route_methods {
     my @pairs;
@@ -96,6 +97,63 @@ state $routes //= {
         swagger => {
             summary => '获取登录方式（OAuth2、Telegram）及注册、登录、验证码的 API 权限',
         },
+    },
+},
+'/user/service/options' => {
+    swagger => { tags => '用户服务' },
+    sensitive_args => 1,
+    strict_params => 1,
+    GET => {
+        controller => 'ServiceOptions', method => 'get_for_api',
+        params => { user_service_id => {type => 'integer', required => 1, min => 1} },
+        swagger => {summary => '读取本人服务的脱敏服务选项'},
+    },
+    POST => {
+        controller => 'ServiceOptions', method => 'save_for_api',
+        params => {
+            user_service_id => {type => 'integer', required => 1, min => 1},
+            enabled => {type => 'boolean', required => 1},
+            data => {type => 'object'}, secret => {type => 'object'},
+        },
+        swagger => {summary => '保存本人服务的服务选项'},
+    },
+},
+'/user/service/options/secret' => {
+    swagger => { tags => '用户服务' },
+    sensitive_args => 1,
+    strict_params => 1,
+    POST => {
+        controller => 'ServiceOptions', method => 'secret_for_api',
+        params => {user_service_id => {type => 'integer', required => 1, min => 1}},
+        swagger => {summary => '读取本人服务已保存的机密选项'},
+    },
+},
+'/admin/user/service/options' => {
+    swagger => { tags => '用户服务' },
+    sensitive_args => 1,
+    strict_params => 1,
+    GET => {
+        controller => 'ServiceOptions', method => 'admin_get_for_api',
+        params => {user_service_id => {type => 'integer', required => 1, min => 1}},
+        swagger => {summary => '读取客户服务的脱敏服务选项'},
+    },
+    POST => {
+        controller => 'ServiceOptions', method => 'admin_disable_for_api',
+        params => {
+            user_service_id => {type => 'integer', required => 1, min => 1},
+            enabled => {type => 'boolean', required => 1, enum => [0]},
+        },
+        swagger => {summary => '停用客户服务的服务选项'},
+    },
+},
+'/admin/user/service/options/retry' => {
+    swagger => { tags => '用户服务' },
+    sensitive_args => 1,
+    strict_params => 1,
+    POST => {
+        controller => 'ServiceOptions', method => 'admin_retry_for_api',
+        params => {user_service_id => {type => 'integer', required => 1, min => 1}},
+        swagger => {summary => '重新排队同步客户服务的现有服务选项'},
     },
 },
 '/user/service/consumption' => {
@@ -2519,6 +2577,8 @@ for my $uri ( keys %{ $routes } ) {
     for my $method ( 'GET','POST','PUT','DELETE' ) {
         next unless $routes->{$uri}->{$method};
         $routes->{$uri}->{$method}->{splat_to} = $routes->{$uri}->{splat_to} if $routes->{$uri}->{splat_to};
+        $routes->{$uri}->{$method}->{sensitive_args} = 1 if $routes->{$uri}->{sensitive_args};
+        $routes->{$uri}->{$method}->{strict_params} = 1 if $routes->{$uri}->{strict_params};
         $router->connect( sprintf("%s:%s", $method, $uri), $routes->{$uri}->{$method} );
     }
 }
@@ -2527,10 +2587,25 @@ our $request_start = Time::HiRes::time();
 my $uri = $ENV{PATH_INFO};
 our %in;
 
+my $private_options_response = ($uri // '') =~ m{\A/user/service/options/secret/?\z};
+# This scope includes SHM authentication and all early errors. FastCGI's next
+# request must not inherit these response defaults.
+local %Core::Utils::response_headers = $private_options_response ? (
+    'Cache-Control' => 'private, no-store', 'Pragma' => 'no-cache', 'Expires' => '0',
+) : ();
+
 if ( my $p = $router->match( sprintf("%s:%s", $ENV{REQUEST_METHOD}, $uri )) ) {
+    local $Core::Utils::sensitive_request = $p->{sensitive_args} ? 1 : 0;
 
     my $api_descr = $p->{swagger}{summary};
-    %in = parse_args( auto_parse_json => $p->{skip_auto_parse_json} ? 0 : 1 );
+    if ($private_options_response && (my $origin_error = secret_request_origin_error())) {
+        _log_api_call(undef, code => 403, error => $origin_error, descr => $api_descr);
+        print_header(status => 403);
+        print_json({status => 403, error => $origin_error});
+        exit 0;
+    }
+    %in = parse_args( auto_parse_json => $p->{skip_auto_parse_json} ? 0 : 1,
+        quiet_json => $p->{sensitive_args} );
     $in{filter} = decode_json( $in{filter} ) if $in{filter};
 
     if ( my $splat = $p->{splat} ) {
@@ -2649,6 +2724,15 @@ if ( my $p = $router->match( sprintf("%s:%s", $ENV{REQUEST_METHOD}, $uri )) ) {
         'PUTDATA',
         ( $p->{splat_to} ? $p->{splat_to} : () ),
     );
+    if ($p->{strict_params}) {
+        if (my $strict_error = strict_params_error(\%schema, \%in)) {
+            _log_api_call($user, code => 400, error => '服务选项请求参数无效', descr => $api_descr);
+            print_header(status => 400);
+            print_json({status => 400, error => '服务选项请求参数无效'});
+            exit 0;
+        }
+        $args{enabled} = $in{enabled} if exists $in{enabled};
+    }
     if ( my $err = validate_params( \%schema, \%args, \%allowed_input_fields ) ) {
         _log_api_call( $user, code => 400, error => $err, descr => $api_descr );
         print_header( status => 400 );
@@ -2911,6 +2995,37 @@ sub get_service_id {
     return ( $service_id );
 }
 
+sub secret_request_origin_error {
+    my $error = '服务选项机密仅允许同源读取';
+    return $error if exists($ENV{HTTP_SEC_FETCH_SITE})
+        && lc($ENV{HTTP_SEC_FETCH_SITE} // '') ne 'same-origin';
+    return undef unless exists $ENV{HTTP_ORIGIN};
+    my ($origin, $host) = @ENV{qw(HTTP_ORIGIN HTTP_HOST)};
+    my $authority = qr/(?:[a-z0-9.-]+|\[[a-f0-9:.]+\])(?::[0-9]{1,5})?/i;
+    return $error unless defined($origin) && $origin =~ /\Ahttps?:\/\/$authority\z/i
+        && defined($host) && $host =~ /\A$authority\z/;
+    # The official reverse proxies preserve Host and the original TLS scheme.
+    # Never use a caller-selected X-Forwarded-Host as the origin authority.
+    my $scheme = lc($ENV{HTTP_X_FORWARDED_PROTO} // '');
+    unless ($scheme =~ /\Ahttps?\z/) {
+        $scheme = ($ENV{HTTPS} // '') =~ /\A(?:on|1)\z/i ? 'https'
+            : lc($ENV{REQUEST_SCHEME} // '');
+        $scheme = ($ENV{SERVER_PORT} // '') eq '443' ? 'https' : 'http'
+            unless $scheme =~ /\Ahttps?\z/;
+    }
+    my $claimed = URI->new($origin);
+    my $expected = URI->new("$scheme://$host");
+    # Nginx's official Host=$host drops the browser's non-default port. Only
+    # the browser-controlled same-origin Fetch Metadata can attest that case.
+    my $proxy_lost_port = lc($ENV{HTTP_SEC_FETCH_SITE} // '') eq 'same-origin'
+        && $host !~ /:\d+\z/;
+    return $error unless lc($claimed->scheme) eq $expected->scheme
+        && lc($claimed->host) eq lc($expected->host)
+        && ($claimed->port == $expected->port || $proxy_lost_port)
+        && $claimed->port >= 1 && $claimed->port <= 65535;
+    return undef;
+}
+
 # Validate %args against a params schema defined in the route.
 # Schema format (per field):
 #   type         => 'integer' | 'number' | 'string' | 'email' | 'boolean' | 'object' | 'array' | 'json' (object или array)
@@ -2922,6 +3037,18 @@ sub get_service_id {
 #   enum         => arrayref of allowed values
 #
 # Returns undef on success, or an error string on the first failing field.
+sub strict_params_error {
+    my ($schema, $input) = @_;
+    my $invalid = grep {!exists $schema->{$_}} keys %$input;
+    if (exists $input->{enabled}) {
+        my $value = $input->{enabled};
+        $invalid ||= ref($value) ? !JSON::is_bool($value)
+            : !defined($value) || "$value" !~ /\A[01]\z/;
+    }
+    $input->{enabled} = $input->{enabled} ? 1 : 0 if !$invalid && exists $input->{enabled};
+    return $invalid ? '服务选项请求参数无效' : undef;
+}
+
 sub validate_params {
     my ( $schema, $args, $allowed_input_fields ) = @_;
 

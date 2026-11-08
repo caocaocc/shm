@@ -80,7 +80,13 @@ sub job_cleanup {
     my $self = shift;
     my $task = shift;
 
-    get_service('us')->cleanup()->commit();
+    my $options = get_service('ServiceOptions');
+    {
+        local $options->{_defer_cleanup} = 1;
+        get_service('us')->cleanup()->commit();
+    }
+    $options->cleanup;
+    $options->commit;
     get_service('SpoolHistory')->cleanup(); #auto commit
     get_service('SpoolQueue')->cleanup(); #auto commit
     get_service('Sessions')->cleanup(); # auto commit
