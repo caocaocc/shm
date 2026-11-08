@@ -1,6 +1,7 @@
 package Core::User;
 
 use v5.14;
+use utf8;
 
 use parent 'Core::Base', 'Core::User::Passwd';
 use Core::Base;
@@ -852,6 +853,18 @@ sub payment {
         uniq_key => undef,
         get_smart_args( @_ ),
     );
+
+    # Payment adapters must supply an amount in the account's currency.
+    # Conversion belongs to the adapter; a currency label never converts money.
+    my $currency = get_service('Cloud::Currency')->system_currency;
+    if (defined $args{currency}) {
+        unless (!ref($args{currency}) && $args{currency} =~ /\A[A-Za-z]{3}\z/
+            && uc($args{currency}) eq $currency) {
+            get_service('report')->add_error('支付币种与账本币种不一致，不能直接入账');
+            return undef;
+        }
+        $args{currency} = $currency;
+    }
 
     if ( $args{user_id} ) {
         switch_user( $args{user_id} );

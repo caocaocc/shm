@@ -102,6 +102,7 @@ our @EXPORT_OK = qw(
 use Core::System::ServiceManager qw( get_service delete_service );
 use Time::DaysInMonth;
 use JSON qw//;
+use Math::BigRat;
 use Scalar::Util qw(blessed looks_like_number);
 use File::Temp;
 use Data::Validate::Email qw(is_email);
@@ -1141,21 +1142,37 @@ sub ip_rate_limit {
 # Rounds a monetary value up to 2 decimal places (ceiling).
 sub round_up {
     my $val = shift;
-    use POSIX qw(ceil);
-    return ceil( $val * 100 ) / 100;
+    return _round_money($val, 'up');
 }
 
 # Rounds a monetary value down to 2 decimal places (floor).
 sub round_down {
     my $val = shift;
-    use POSIX qw(floor);
-    return floor( $val * 100 ) / 100;
+    return _round_money($val, 'down');
 }
 
 # Rounds a monetary value to 2 decimal places (nearest, half up).
 sub round {
     my $val = shift;
-    return int( $val * 100 + 0.5 ) / 100;
+    return _round_money($val, 'nearest');
+}
+
+sub _round_money {
+    my ($value, $mode) = @_;
+    $value //= 0;
+    my $amount = Math::BigRat->new("$value");
+    die "Invalid monetary amount\n" if $amount->is_nan || $amount->is_inf;
+    $amount->bmul(100);
+    if ($mode eq 'up') {
+        $amount->bceil;
+    } elsif ($mode eq 'down') {
+        $amount->bfloor;
+    } else {
+        my $negative = $amount->is_neg;
+        $amount->babs->badd('1/2')->bfloor;
+        $amount->bneg if $negative;
+    }
+    return $amount->bdiv(100)->numify;
 }
 
 # Extracts values of a given key from an array of hashes or blessed objects.
