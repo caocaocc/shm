@@ -16,7 +16,7 @@ my %ret = shm_test_api(
     method => 'PUT',
     data => {
         login => $login,
-        password => '123',
+        password => 'fixture-register-123',
     },
 );
 

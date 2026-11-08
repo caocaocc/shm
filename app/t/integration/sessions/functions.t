@@ -17,8 +17,10 @@ subtest 'Check user gen_session()' => sub {
     is( defined $user_session_id, 1 , 'Check gen_session()');
     is( length $user_session_id , 32 , 'Check gen_session() length');
 
-    my $session = get_service('sessions', _id => get_service('sessions')->hash_id( $user_session_id ) );
-    is ( $session->id eq get_service('sessions')->hash_id( $user_session_id ), 1, 'Check Session module' );
+    my $stored_id = get_service('sessions')->hash_id( $user_session_id );
+    my $session = get_service('sessions', _id => $stored_id );
+    is($session->id, $stored_id, 'Session lookup uses the stored SHA-256 hash');
+    isnt($session->id, $user_session_id, 'The bearer credential is not stored in plain text');
 };
 
 subtest 'Check session add' => sub {
