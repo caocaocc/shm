@@ -32,7 +32,34 @@ sub _mask_sensitive_args {
 
 sub _is_sensitive_key {
     my $key = lc( shift // '' );
-    return $key =~ /^(?:password|token|otp_token|session_id|secret|private_key|hash|code|id_token|code_verifier|client_secret|nonce|captcha_token|captcha_answer|credential_id|userhandle|authenticatordata|clientdatajson|attestationobject|signature)$/;
+    return 1 if $key =~ /^(?:password|token|otp_token|session_id|secret|private_key|hash|code|id_token|code_verifier|client_secret|nonce|captcha_token|captcha_answer|credential_id|userhandle|authenticatordata|clientdatajson|attestationobject|signature|sign|authorization|(?:get|post|put|patch|delete)data)$/;
+    return $key =~ /(?:\A|_)(?:password|passwd|secret|token|key|private_key|public_key|api_key|md5_key)(?:_file)?\z/
+        || $key =~ /(?:privatekey|publickey|apikey|md5key)\z/;
+}
+
+sub _log_path {
+    my $path = shift // '';
+    return '/' if ref $path;
+    $path =~ s{\A[A-Za-z][A-Za-z0-9+.-]*://[^/]*}{};
+    $path =~ s/[?#].*\z//s;
+    # Routing layers may decode escaped separators or collapse slash/dot
+    # segments before dispatch. Do the same for the redaction decision.
+    for (1..4) {
+        my $previous = $path;
+        $path =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/ge;
+        last if $path eq $previous;
+    }
+    $path =~ tr{\\}{/};
+    $path =~ s{[?#].*\z}{}s;
+    my @parts;
+    for my $part (split m{/+}, $path) {
+        next if $part eq '' || $part eq '.';
+        if ($part eq '..') { pop @parts; next; }
+        push @parts, $part;
+    }
+    $path = '/' . join('/', @parts);
+    $path =~ s{\A/(?:shm/)?v1(?:\.cgi)?(?=/|\z)}{}i;
+    return $path || '/';
 }
 
 sub structure {
@@ -96,7 +123,21 @@ sub add {
         @_,
     );
 
-    $args{args} = _mask_sensitive_args( $args{args} ) if ref $args{args};
+    my $path = _log_path($args{url});
+    # Query parameters already have their own masked args field. Never retain
+    # a second, unfiltered copy in the URL column.
+    $args{url} = $path;
+    my $config_write = uc($args{method} // '') =~ /\A(?:POST|PUT|PATCH|DELETE)\z/
+        && $path =~ m{\A/admin/config(?:/|\z)}i;
+    if ($config_write || $path =~ m{\A/(?:admin/)?user/service/options(?:/(?:retry|secret))?\z}i) {
+        # These endpoints also accept arbitrary secret object keys. Never log
+        # raw bodies, malformed JSON, or a client-selected secret field name.
+        $args{args} = {redacted => 1};
+        $args{response_error} = '敏感配置请求失败'
+            if $config_write && defined($args{response_error}) && length($args{response_error});
+    } else {
+        $args{args} = _mask_sensitive_args( $args{args} ) if ref $args{args};
+    }
 
     $self->{user_id} = 0 unless $self->user_id;
 

@@ -85,9 +85,17 @@ sub send {
         content => $content,
         verify_hostname => $verify_hostname,
         timeout => $timeout,
+        sensitive => $settings{sensitive} ? 1 : 0,
     );
 
     my $response = $self->http( %request_args );
+    # Sensitive integrations consume their response in memory. Never persist
+    # credentials, arbitrary remote status text or JSON in task history/storage.
+    if ($settings{sensitive}) {
+        return $response->is_success
+            ? (SUCCESS, {message => 'HTTP_REQUEST_OK', status => {code => $response->code}})
+            : (FAIL, {error => 'HTTP_REQUEST_FAILED', status => {code => $response->code}});
+    }
     my %info = (
         request => \%request_args,
         response => $response->json_content || sprintf("*NOT_JSON* Length: %d", length $response->decoded_content ),
@@ -135,15 +143,21 @@ sub lwp {
         timeout => 10,
         keep_alive => 4,
         verify_hostname => 1,
+        no_redirect => 0,
+        no_proxy => 0,
+        ca_bundle => undef,
+        max_size => undef,
         @_,
     );
 
-    my $http_proxy  = $ENV{HTTP_PROXY}  || $ENV{http_proxy}  || '';
-    my $https_proxy = $ENV{HTTPS_PROXY} || $ENV{https_proxy} || '';
-    my $no_proxy    = $ENV{NO_PROXY}    || $ENV{no_proxy}    || '';
+    my $http_proxy  = $args{no_proxy} ? '' : ($ENV{HTTP_PROXY}  || $ENV{http_proxy}  || '');
+    my $https_proxy = $args{no_proxy} ? '' : ($ENV{HTTPS_PROXY} || $ENV{https_proxy} || '');
+    my $no_proxy    = $args{no_proxy} ? '' : ($ENV{NO_PROXY}    || $ENV{no_proxy}    || '');
 
     state %ua_cache;
-    my $cache_key = join('|', $args{timeout}, $args{verify_hostname} // 0, $http_proxy, $https_proxy, $no_proxy);
+    my $cache_key = join('|', $args{timeout}, $args{verify_hostname} // 0,
+        $args{no_redirect} // 0, $args{no_proxy} // 0, $args{ca_bundle} // '', $args{max_size} // '',
+        $http_proxy, $https_proxy, $no_proxy);
 
     return $ua_cache{$cache_key} //= do {
         my $ua = LWP::UserAgent->new(
@@ -152,7 +166,10 @@ sub lwp {
             keep_alive => $args{keep_alive},
             ssl_opts => {
                 verify_hostname => $args{verify_hostname},
+                $args{ca_bundle} ? (SSL_ca_file => $args{ca_bundle}) : (),
             },
+            $args{no_redirect} ? (max_redirect => 0, requests_redirectable => []) : (),
+            defined($args{max_size}) ? (max_size => $args{max_size}) : (),
         );
         $ua->proxy('http',  $http_proxy)  if $http_proxy;
         $ua->proxy('https', $https_proxy) if $https_proxy;
@@ -175,8 +192,20 @@ sub http {
         timeout => 10,
         keep_alive => 4,
         binary => 0,
+        sensitive => 0,
+        no_redirect => 0,
+        no_proxy => 0,
+        ca_bundle => undef,
+        max_size => undef,
         @_,
     );
+
+    if ($args{sensitive}) {
+        # A caller cannot weaken these protections for a sensitive request.
+        @args{qw(verify_hostname no_redirect no_proxy)} = (1, 1, 1);
+        $args{max_size} //= 16 * 1024 * 1024;
+        delete $self->{response};
+    }
 
     $args{content_type} ||= 'application/json; charset=utf-8';
 
@@ -187,6 +216,10 @@ sub http {
             timeout
             keep_alive
             verify_hostname
+            no_redirect
+            no_proxy
+            ca_bundle
+            max_size
         ) }
     );
 
@@ -212,9 +245,14 @@ sub http {
         %{ $args{headers} || {} },
     ));
 
-    $self->{response} = $response;
+    if ($args{sensitive} && $response->header('Client-Aborted')) {
+        return HTTP::Response->new(502, 'HTTP_RESPONSE_TOO_LARGE');
+    }
 
-    logger->dump( $response->request );
+    unless ($args{sensitive}) {
+        $self->{response} = $response;
+        logger->dump( $response->request );
+    }
 
     # Декодирование UTF-8 для текстового контента
     if (!$args{binary}) {
@@ -230,6 +268,21 @@ sub http {
 }
 
 sub response { shift->{response} };
+
+sub _response_body {
+    my ($response, $binary, $sensitive) = @_;
+    return $response->content if $binary;
+    my $body = $response->decoded_content;
+    return $response->json_content || $body unless $sensitive;
+    # Core::Utils::decode_json logs malformed input. A provider response can
+    # contain credentials even when it is not valid JSON, so parse quietly.
+    if (($response->header('content-type') || '') =~ m{application/json}i) {
+        require JSON::PP;
+        my $json = eval { JSON::PP->new->decode($body) };
+        return $json unless $@;
+    }
+    return $body;
+}
 
 sub _http {
     my $self = shift;
@@ -251,10 +304,10 @@ sub _http {
             http_headers     => { $response->headers->flatten },
             http_code        => $response->code,
             http_status_line => $response->status_line,
-            body             => $args{binary} ? $response->content : ($response->json_content || $response->decoded_content),
+            body             => _response_body($response, $args{binary}, $args{sensitive}),
         };
     } else {
-        return $args{binary} ? $response->content : ($response->json_content || $response->decoded_content);
+        return _response_body($response, $args{binary}, $args{sensitive});
     }
 }
 

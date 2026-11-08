@@ -36,6 +36,7 @@ $config->local('dbh', $dbh );
 switch_user( 1 );
 
 my $tables_count = $sql->do("SHOW TABLES");
+die "无法读取数据库结构，初始化已停止\n" unless defined $tables_count;
 
 if ( $ENV{DEV} || $tables_count == 0 ) {
     if ( $ENV{DEV} && $ENV{DEV_DB_CLEANUP} && $tables_count ) {

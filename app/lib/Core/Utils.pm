@@ -94,6 +94,7 @@ our @EXPORT_OK = qw(
     round
     hmac_sha256 hmac_sha256_hex sha256_hex sha256 sha512_hex hmac_sha512_hex sha512 hmac_sha512
     encrypt_aes256_gcm_base64
+    decrypt_aes256_gcm_base64
 
     uri_escape_utf8
     uri_unescape
@@ -118,6 +119,7 @@ use Crypt::PRNG qw(random_bytes);
 use URI::Escape qw( uri_escape_utf8 uri_unescape );
 
 our %in;
+our $sensitive_request;
 our $is_header = 0;
 my $cgi = CGI->new;
 
@@ -282,7 +284,9 @@ sub parse_args {
 
     if ( $args{auto_parse_json} && $ENV{CONTENT_TYPE} =~/application\/json/i ) {
         my $method = $ENV{REQUEST_METHOD};
-        my $json = decode_json( $in{ "${method}DATA" } );
+        my $json = ($args{quiet_json} || $sensitive_request)
+            ? eval { JSON->new->utf8->decode($in{"${method}DATA"} // '') }
+            : decode_json( $in{ "${method}DATA" } );
         if ( $json ) {
             if ( ref $json eq 'HASH' ) {
                 %in = %{ $json };
@@ -339,9 +343,10 @@ sub decode_json {
 
     utf8::decode( $data );
 
+    local $@;
     my $json;
     eval{ $json = JSON->new->latin1->relaxed->decode( $data ) } or do {
-        get_service('logger')->warning("Incorrect JSON field for decode: " . $data);
+        get_service('logger')->warning('Invalid JSON input');
     };
 
     return $json;
@@ -402,12 +407,13 @@ sub encode_json_perl {
         pretty => 0,
         @_,
     );
+    local $@;
 
     $data = prepare_json_data($data);
 
     my $json;
     eval{ $json = JSON->new->canonical->pretty( $args{pretty} )->encode( obj_to_json $data ) } or do {
-        get_service('logger')->warning("Incorrect JSON data for encode: " . $data);
+        get_service('logger')->warning('JSON serialization failed');
     };
 
     return $json;
@@ -419,12 +425,13 @@ sub encode_json {
         pretty => 0,
         @_,
     );
+    local $@;
 
     $data = prepare_json_data($data);
 
     my $json;
     eval{ $json = JSON->new->latin1->canonical->pretty( $args{pretty} )->encode( encode_utf8($data) ) } or do {
-        get_service('logger')->warning("Incorrect JSON data for encode: " . $data);
+        get_service('logger')->warning('JSON serialization failed');
     };
 
     return $json;
@@ -863,6 +870,8 @@ sub uuid_gen {
     return $uuid;
 }
 
+our %response_headers;
+
 sub print_header {
     my %args = (
         status => 200,
@@ -871,6 +880,7 @@ sub print_header {
         'Access-Control-Allow-Origin' => "$ENV{HTTP_ORIGIN}",
         'Access-Control-Allow-Credentials' => 'true',
         @_,
+        %response_headers,
     );
 
     return undef if $is_header;
@@ -1287,7 +1297,7 @@ sub _get_sort_value {
 }
 
 sub encrypt_aes256_gcm_base64 {
-    my ($plaintext, $key) = @_;
+    my ($plaintext, $key, $aad) = @_;
 
     my $key_len = do { use bytes; length($key) };
     if ( $key_len != 32 ) {
@@ -1298,8 +1308,26 @@ sub encrypt_aes256_gcm_base64 {
     use Crypt::AuthEnc::GCM qw(gcm_encrypt_authenticate);
 
     my $nonce = random_bytes(12);
-    my ($ciphertext, $tag) = gcm_encrypt_authenticate('AES', $key, $nonce, '', $plaintext);
-    return encode_base64($nonce . $ciphertext . $tag, '');
+    my ($ciphertext, $tag) = gcm_encrypt_authenticate('AES', $key, $nonce, $aad // '', $plaintext);
+    return MIME::Base64::encode_base64($nonce . $ciphertext . $tag, '');
+}
+
+sub decrypt_aes256_gcm_base64 {
+    my ($encoded, $key, $aad) = @_;
+    die "Invalid encrypted value\n" unless defined($key) && length($key) == 32
+        && defined($encoded) && !ref($encoded)
+        && $encoded =~ /\A[A-Za-z0-9+\/]+={0,2}\z/;
+    my $raw = MIME::Base64::decode_base64($encoded);
+    die "Invalid encrypted value\n" unless length($raw) >= 28
+        && MIME::Base64::encode_base64($raw, '') eq $encoded;
+    require Crypt::AuthEnc::GCM;
+    # Materialize substrings before passing them to CryptX's XS boundary.
+    my ($nonce, $ciphertext, $tag) = (substr($raw, 0, 12),
+        substr($raw, 12, length($raw) - 28), substr($raw, -16));
+    my $plaintext = Crypt::AuthEnc::GCM::gcm_decrypt_verify('AES', $key,
+        $nonce, $aad // '', $ciphertext, $tag);
+    die "Invalid encrypted value\n" unless defined $plaintext;
+    return $plaintext;
 }
 
 1;

@@ -135,6 +135,7 @@ while ($request_count < $max_requests && $request->Accept() >= 0) {
         %ENV = (%CLEAN_ENV, %request_env);
 
         my $request_uri = $ENV{REQUEST_URI} // $ENV{DOCUMENT_URI} // $ENV{SCRIPT_NAME} // '';
+        (my $request_path = $request_uri) =~ s/[?#].*\z//s;
 
         # Check if we should skip logging
         my $skip_log = 0;
@@ -157,14 +158,14 @@ while ($request_count < $max_requests && $request->Accept() >= 0) {
             unless ($skip_log) {
                 my $method = $ENV{REQUEST_METHOD} // 'UNKNOWN';
                 my $ms = int((time - $req_start) * 1000);
-                log_msg("$method $request_uri - script: $script_filename ${ms}ms");
+                log_msg("$method $request_path - script: $script_filename ${ms}ms");
             }
         } else {
             print "Status: 404 Not Found\r\n";
             print "Content-Type: text/plain\r\n\r\n";
-            print "Not Found: " . ($script_filename || $request_uri) . "\n";
+            print "Not Found: " . ($script_filename || $request_path) . "\n";
             unless ($skip_log) {
-                log_msg("404 - file not found, not a regular executable file, or empty mapping: " . ($script_filename || $request_uri));
+                log_msg("404 - file not found, not a regular executable file, or empty mapping: " . ($script_filename || $request_path));
             }
         }
     };

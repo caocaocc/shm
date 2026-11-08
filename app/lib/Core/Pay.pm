@@ -70,6 +70,18 @@ sub add {
     return $self->SUPER::add( %args );
 }
 
+sub delete {
+    my $self = shift;
+    if ($self->id && $self->has_external_references(
+        table => $self->table, column => 'id', value => $self->id,
+    )) {
+        get_service('report')->status(409);
+        get_service('report')->add_error('付款流水仍被其他业务引用，不能删除；退款需要单独的反向账务记录');
+        return undef;
+    }
+    return $self->SUPER::delete(@_);
+}
+
 sub pays {
     my $self = shift;
     my %args = (

@@ -179,12 +179,16 @@ sub do {
 
     $self->log( $query, \@args );
 
-    my $res = $self->dbh->do( $query, undef, @args ) or do {
-        logger->error( sprintf "SQL QUERY: %s [%s], ERROR: %s",
-            $query,
-            join(',', @args ),
-            $self->dbh->errstr,
-        );
+    my $res = $self->_database_call(sub { $self->dbh->do( $query, undef, @args ) }) or do {
+        if ($self->_sensitive_sql) {
+            logger->error('敏感配置数据库写入失败');
+        } else {
+            logger->error( sprintf "SQL QUERY: %s [%s], ERROR: %s",
+                $query,
+                join(',', @args ),
+                $self->dbh->errstr,
+            );
+        }
         return undef;
     };
     return $res eq '0E0' ? 0 : $res;
@@ -219,11 +223,33 @@ sub log {
     my $query = shift;
     my $binds = shift;
 
+    if ($self->_sensitive_sql) {
+        logger->debug('敏感配置 SQL 内容已隐藏');
+        return;
+    }
     logger->debug(
         'SQL Query: "',
         "\033[0;93m".$query."\033[0m",
         '" Binds: [' . join(',', @{ $binds || [] } ) ."]"
     );
+}
+
+sub _sensitive_sql {
+    my $self = shift;
+    return 1 if $Core::Utils::sensitive_request;
+    return $self->can('table') && ($self->table // '') eq 'config';
+}
+
+sub _database_call {
+    my ($self, $code) = @_;
+    return $code->() unless $self->_sensitive_sql;
+    my $dbh = $self->dbh;
+    local $dbh->{PrintError} = 0;
+    local $dbh->{ShowErrorStatement} = 0;
+    my $result;
+    my $ok = eval { $result = $code->(); 1 };
+    die "敏感配置数据库请求失败\n" unless $ok;
+    return $result;
 }
 
 sub query {
@@ -233,23 +259,23 @@ sub query {
 
     $self->log( $query, \@args );
 
-    my $sth = $self->dbh->prepare_cached( $query ) or die $self->dbh->errstr;
+    my $res = $self->_database_call(sub {
+        my $sth = $self->dbh->prepare_cached( $query ) or die $self->dbh->errstr;
+        for ( 0..scalar( @args )-1 ) {
+            $sth->bind_param( $_+1, $args[$_] );
+        }
+        $sth->execute() or die $self->dbh->errstr;
+        my @rows;
+        while (my $ref = $sth->fetchrow_hashref()) {
+            push @rows, $ref;
+        }
+        $sth->finish;
+        return \@rows;
+    });
 
-    for ( 0..scalar( @args )-1 ) {
-        $sth->bind_param( $_+1, $args[$_] );
-    }
-    $sth->execute() or die $self->dbh->errstr;
+    logger->debug("\033[0;93m". 'SQL result: found rows:' ."\033[0m " . scalar @$res );
 
-    my @res;
-
-    while (my $ref = $sth->fetchrow_hashref()) {
-        push @res, $ref;
-    }
-    $sth->finish;
-
-    logger->debug("\033[0;93m". 'SQL result: found rows:' ."\033[0m " . scalar @res );
-
-    return wantarray ? @res : \@res;
+    return wantarray ? @$res : $res;
 }
 
 sub query_by_name {
@@ -260,7 +286,56 @@ sub query_by_name {
 
     $self->log( $query, \@args );
 
-    return $self->dbh->selectall_hashref( $query, $key_field, undef, @args );
+    return $self->_database_call(sub { $self->dbh->selectall_hashref( $query, $key_field, undef, @args ) });
+}
+
+# A module may own durable audit rows without being known to the billing core.
+# Check restrictive foreign keys before deleting any of the parent's resources.
+sub has_external_references {
+    my ($self, %args) = @_;
+    for my $name (qw(table column)) {
+        die "数据库引用检查参数无效\n" unless defined($args{$name}) && !ref($args{$name}) && length($args{$name});
+    }
+    die "数据库引用检查参数无效\n" if !defined($args{value}) || ref($args{value})
+        || (exists($args{ignore_tables}) && ref($args{ignore_tables}) ne 'ARRAY');
+    my %ignored = map { die "数据库引用检查参数无效\n" if !defined($_) || ref($_); $_ => 1 }
+        @{ $args{ignore_tables} || [] };
+    my $dbh = $self->dbh;
+    local $dbh->{RaiseError} = 1;
+    local $dbh->{PrintError} = 0;
+    local $dbh->{ShowErrorStatement} = 0;
+    my $found = 0;
+    my $ok = eval {
+        my $references = $dbh->selectall_arrayref(q{
+            SELECT k.TABLE_NAME AS child_table, k.COLUMN_NAME AS child_column
+            FROM information_schema.KEY_COLUMN_USAGE k
+            JOIN information_schema.REFERENTIAL_CONSTRAINTS r
+              ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA
+             AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND r.TABLE_NAME=k.TABLE_NAME
+            WHERE k.TABLE_SCHEMA=DATABASE() AND k.REFERENCED_TABLE_SCHEMA=DATABASE()
+              AND k.REFERENCED_TABLE_NAME=? AND k.REFERENCED_COLUMN_NAME=?
+              AND r.DELETE_RULE IN ('RESTRICT','NO ACTION')
+        }, {Slice => {}}, $args{table}, $args{column});
+        die 'Reference metadata unavailable' unless ref($references) eq 'ARRAY';
+        my %checked;
+        for my $reference (@$references) {
+            my ($table, $column) = @{$reference}{qw(child_table child_column)};
+            die 'Invalid reference metadata' unless defined($table) && !ref($table) && length($table)
+                && defined($column) && !ref($column) && length($column);
+            next if $ignored{$table} || $checked{"$table\0$column"}++;
+            my $query = 'SELECT 1 FROM ' . $dbh->quote_identifier($table)
+                . ' WHERE ' . $dbh->quote_identifier($column) . '=? LIMIT 1';
+            my $exists = $dbh->selectrow_array($query, undef, $args{value});
+            die 'Reference query failed' if !defined($exists) && $dbh->err;
+            if ($exists) {
+                $found = 1;
+                last;
+            }
+        }
+        1;
+    };
+    die "无法核对数据库引用，删除已停止\n" unless $ok;
+    return $found;
 }
 
 sub convert_sql_structure_data {
