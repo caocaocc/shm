@@ -337,6 +337,7 @@ sub paysystems {
 
         # allow override paysystem
         my $paysystem = $p->{paysystem} || $ps;
+        $p = get_service('Pay::Local')->profile($ps, $p);
 
         if ( $args{paysystem} ) {
             next if $paysystem ne $args{paysystem};

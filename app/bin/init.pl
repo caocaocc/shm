@@ -110,7 +110,9 @@ if ( $ENV{DEV} || $tables_count == 0 ) {
     $config->set_value( { version => $version . $version_prefix } );
 }
 
-# Load cloud and download paysystems and templates
+# Make fresh configuration visible to locally installed payment modules.
+$dbh->commit() or die "初始化数据库提交失败\n";
+# Install bundled local modules, then queue missing Cloud payment scripts.
 get_service('Cloud::Jobs')->startup();
 
 $dbh->commit();

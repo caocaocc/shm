@@ -20,6 +20,7 @@ sub ps_file_name {
 sub startup {
     my $self = shift;
 
+    get_service('Pay::Local')->install();
     $self->job_download_all_paystems();
 }
 
@@ -52,6 +53,7 @@ sub job_download_all_paystems {
     my $spool = get_service('spool');
 
     for my $ps_name ( $self->ps_list ) {
+        next if get_service('Pay::Local')->is_local($ps_name);
 
         my $need_update_to = $config->get_data->{ $ps_name }->{need_update_to};
         next if -f $self->ps_file_name( $ps_name ) && !$need_update_to;
@@ -87,6 +89,9 @@ sub job_download_paystem {
     my $ps_arch = $task->settings->{arch} || $self->arch;
     my $ps_name = $task->settings->{ps_name};
     my $version = $task->settings->{version};
+
+    return SUCCESS, { msg => '本地支付模块随应用发布，无需从 Cloud 下载' }
+        if get_service('Pay::Local')->is_local($ps_name);
 
     unless ( $self->get_auth_basic() ) {
         return SUCCESS, { msg => 'no auth' };

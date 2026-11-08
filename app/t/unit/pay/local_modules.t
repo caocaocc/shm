@@ -1,0 +1,60 @@
+use v5.14;
+use strict;
+use warnings;
+use Test::More;
+use File::Temp qw(tempdir);
+use File::Path qw(make_path);
+use File::Spec;
+use Core::Pay::Local;
+
+my $dir = tempdir(CLEANUP => 1);
+local $ENV{SHM_ROOT_DIR} = $dir;
+local $ENV{HTTP_COOKIE} = 'fixture-cookie-not-real';
+local $ENV{REQUEST_METHOD} = 'POST';
+my $uid = $>;
+no warnings 'redefine';
+local *Core::Pay::Local::_uid = sub { $uid };
+make_path("$dir/pay_systems", "$dir/data");
+sub write_file { my ($path, $text) = @_; open(my $fh, '>', $path) or die $!; print {$fh} $text; close $fh; }
+sub read_file { my ($path) = @_; open(my $fh, '<', $path) or die $!; local $/; <$fh> }
+my $source = <<'SCRIPT';
+#!/usr/bin/perl
+use strict;
+use warnings;
+die "HTTP environment leaked" if $ENV{HTTP_COOKIE} || $ENV{REQUEST_METHOD};
+die "Expected installer argument" unless @ARGV == 1 && $ARGV[0] eq '--install';
+open(my $fh, '>', "$ENV{SHM_ROOT_DIR}/data/installed") or die $!;
+print {$fh} 'installed'; close $fh;
+SCRIPT
+write_file("$dir/pay_systems/example.cgi", $source);
+write_file("$dir/pay_systems/example.json", '{"name":"Example","show_for_client":true,"payment_url":"/shm/pay_systems/example.cgi","action":"create"}');
+my $local = Core::Pay::Local->new;
+ok($local->is_local('example'), 'trusted bundled script is a local module');
+ok(!$local->is_local('../example'), 'module names cannot escape the source directory');
+ok(!$local->is_local('unknown'), 'Cloud-only module has no local source');
+is($local->profile('example', {})->{name}, 'Example', 'bundled public defaults supply the display name');
+is($local->profile('example', {show_for_client => 0})->{show_for_client}, 0, 'explicit hidden setting overrides default');
+is($local->profile('example', {name => 'Custom'})->{name}, 'Custom', 'operator display name is retained');
+is($local->profile('example', {})->{action}, 'create', 'bundled public defaults use the existing SHM action field');
+is($local->profile('example', {action => 'payment'})->{action}, 'payment', 'operator action overrides the bundled default');
+ok($local->install, 'local modules install without Cloud authentication');
+is(read_file("$dir/data/installed"), 'installed', 'trusted module initializer ran in a clean environment');
+is(read_file("$dir/data/pay_systems/example.cgi"), $source, 'original shared payment directory receives exact script');
+is((stat "$dir/data/pay_systems/example.cgi")[2] & 0777, 0755, 'CGI is executable');
+is((stat "$dir/data/pay_systems/.local.json")[2] & 0777, 0600, 'installer ownership record is private');
+ok($local->install, 'repeated initialization is idempotent');
+my $new = $source . "\n# new bundled code\n";
+write_file("$dir/pay_systems/example.cgi", $new);
+ok($local->install, 'tracked bundled module updates without Cloud');
+is(read_file("$dir/data/pay_systems/example.cgi"), $new, 'updated bytes are used');
+write_file("$dir/data/pay_systems/example.cgi", "manual change\n");
+ok(!eval { $local->install; 1 }, 'untracked manual changes are not overwritten');
+is(read_file("$dir/data/pay_systems/example.cgi"), "manual change\n", 'conflicting user file is preserved');
+unlink "$dir/data/pay_systems/example.cgi";
+symlink "$dir/data/installed", "$dir/data/pay_systems/example.cgi" or die $!;
+ok(!eval { $local->install; 1 }, 'symlink destination is refused');
+is(read_file("$dir/data/installed"), 'installed', 'symlink target is unchanged');
+unlink "$dir/data/pay_systems/example.cgi";
+write_file("$dir/pay_systems/example.json", '{"merchant_private_key":"not-public"}');
+ok(!eval { $local->profile('example', {}); 1 }, 'bundled defaults cannot inject credential fields into public metadata');
+done_testing;

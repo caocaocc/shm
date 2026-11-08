@@ -1,0 +1,6 @@
+{
+  "name": "易支付",
+  "show_for_client": true,
+  "action": "submit",
+  "payment_url": "/shm/pay_systems/epay.cgi"
+}

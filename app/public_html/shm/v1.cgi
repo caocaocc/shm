@@ -2575,6 +2575,14 @@ if ( my $p = $router->match( sprintf("%s:%s", $ENV{REQUEST_METHOD}, $uri )) ) {
         admin => $admin_mode,
     );
 
+    # Payment calls durably commit and may create an external gateway order.
+    # A generic rollback preview cannot undo either effect.
+    if ( $p->{no_dry_run} && $in{dry_run} ) {
+        print_header( status => 400 );
+        print_json({ status => 400, error => '支付接口不支持 dry_run' });
+        exit 0;
+    }
+
     # User-switching (impersonation) is only allowed for a genuinely
     # authenticated admin (session/login/basic-auth). Routes that force a
     # fixed context user via route config (e.g. /public/* uses user_id => 1

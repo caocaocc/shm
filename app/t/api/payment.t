@@ -15,7 +15,7 @@ my $ret = qx(
     -H "login: admin" \\
     -H "password: admin" \\
     -X PUT \\
-    -d '{"user_id":40092,"pay_system_id":"test","money":123.45,"comment":"Test payment #4"}' \\
+    -d '{"user_id":40092,"pay_system_id":"test","money":123.45,"comment":{"comment":"Test payment #4"}}' \\
     http://api/shm/v1/admin/user/payment
 );
 
