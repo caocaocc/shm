@@ -5,18 +5,28 @@ use Core::Utils qw/shm_test_api/;
 
 use Test::More;
 
-use SHM;
-my $user = SHM->new( user_id => 40094 );
-my $balance_before = $user->balance;
+my $login = sprintf 'login-%d-%d', time, $$;
 
-my $login = sprintf( "login-%d", time );
+for my $case (
+    [undef,      qr/Field required: password/],
+    ['abc12',    qr/at least 6 characters/],
+    ['a' x 129,  qr/at most 128 characters/],
+) {
+    my ($password, $error) = @$case;
+    my %result = shm_test_api(
+        url => 'v1/user', method => 'PUT',
+        data => {login => $login, defined($password) ? (password => $password) : ()},
+    );
+    is($result{json}{status}, 400, 'invalid registration is rejected');
+    like($result{json}{error}, $error, 'password validation explains the rejection');
+}
 
 my %ret = shm_test_api(
     url => 'v1/user',
     method => 'PUT',
     data => {
         login => $login,
-        password => '123',
+        password => 'abc123',
     },
 );
 
@@ -30,6 +40,9 @@ my %test = shm_test_api(
 );
 
 is $test{success}, 1, 'Check user delete status';
+
+my %guest = shm_test_api(url => 'v1/user');
+is($guest{json}{status}, 401, 'anonymous requests carry no credentials from the previous request');
 
 done_testing();
 

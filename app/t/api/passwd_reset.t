@@ -11,7 +11,7 @@ subtest 'Attempt to send a user password reset request' => sub {
         url => 'v1/user/passwd/reset',
         method => 'POST',
         data => {
-            email => 'danuk',
+            login => 'danuk',
         },
     );
 
@@ -23,7 +23,8 @@ subtest 'Delete password reset request from spool' => sub {
     my $user = SHM->new( user_id => 40092 );
 
     my $spool = get_service('spool');
-    my ( $row ) = $spool->list;
+    my ($row) = grep { $_->{user_id} == 40092 && $_->{event}{name} eq 'USER_PASSWORD_RESET' } $spool->list;
+    ok($row, 'password reset queued for the requested user') or return;
 
     cmp_deeply( $row, superhashof({
           user_id => 40092,
@@ -48,7 +49,6 @@ subtest 'Delete password reset request from spool' => sub {
     }));
 
     $spool->id( $row->{id} )->delete();
-    $user->passwd( password => 'danuk' );
     $user->commit();
 };
 

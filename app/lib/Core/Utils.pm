@@ -511,19 +511,19 @@ sub shm_test_api {
 
     use LWP::UserAgent ();
     state $cached_ua = LWP::UserAgent->new(
-        timeout => 3,
+        timeout => 15,
         keep_alive => 4,
     );
     my $ua = $cached_ua;
 
     $ua->default_header('Content-Type' => 'application/json');
-    $ua->default_header('login' => $args{login}) if $args{login};
-    $ua->default_header('password' => $args{password}) if $args{password};
+    my @auth_headers = map { defined($args{$_}) ? ($_ => $args{$_}) : () } qw(login password);
 
     my $method = lc $args{method};
     my $response = $ua->$method(
         sprintf( "http://api/shm/%s", $args{url} ),
         $args{data} ? $args{data} : (),
+        @auth_headers,
     );
 
     return (

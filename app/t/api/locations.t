@@ -52,7 +52,7 @@ subtest '/system/locations - user-facing locations only' => sub {
     ok( !exists $by_location{'/user/captcha'}, 'skip_check_auth-only locations are fully excluded' );
 };
 
-subtest '/admin/system/locations - admin-only locations, requires admin' => sub {
+subtest '/admin/system/locations - admin and user locations, requires admin' => sub {
     my $json = api_get( 'admin/system/locations?limit=0', login => 'admin', password => 'admin' );
 
     ok( scalar @{ $json->{data} } > 0, 'some admin locations are returned' );
@@ -60,9 +60,8 @@ subtest '/admin/system/locations - admin-only locations, requires admin' => sub 
     my %by_location = map { $_->{location} => $_ } @{ $json->{data} };
     ok( exists $by_location{'/admin/user'}, '/admin/user is present' );
 
-    for my $item ( @{ $json->{data} } ) {
-        like( $item->{location}, qr{^/admin/}, 'every location is under /admin/' );
-    }
+    ok( exists $by_location{'/user'}, 'admin group rules may also use user locations' );
+    ok( !exists $by_location{'/user/captcha'}, 'public-only locations remain excluded' );
 };
 
 subtest '/admin/system/locations - forbidden for a non-admin (but valid) user' => sub {
