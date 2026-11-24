@@ -160,6 +160,53 @@ sub affected_rows {
     return $self->dbh->rows < 1 ? 0 : $self->dbh->rows;
 }
 
+# Installed modules can hold restrictive references to a native ledger row.
+# Discover them from the current schema before removing any owned child data.
+sub has_external_references {
+    my ($self, %parent) = @_;
+    my %owned = map { $_ => 1 } @{$parent{ignore_tables} // []};
+    my $dbh = $self->dbh;
+    local $dbh->{RaiseError} = 1;
+    local $dbh->{PrintError} = 0;
+    local $dbh->{ShowErrorStatement} = 0;
+    local $@;
+    my $found;
+    {
+        local $SIG{__DIE__};
+        my $ok = eval {
+            my $keys = $dbh->selectall_arrayref(q{
+                SELECT DISTINCT k.TABLE_NAME AS child_table, k.COLUMN_NAME AS child_column
+                FROM information_schema.KEY_COLUMN_USAGE AS k
+                JOIN information_schema.REFERENTIAL_CONSTRAINTS AS r
+                  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.TABLE_NAME=k.TABLE_NAME
+                 AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME
+                WHERE k.CONSTRAINT_SCHEMA=DATABASE() AND k.REFERENCED_TABLE_SCHEMA=DATABASE()
+                  AND k.REFERENCED_TABLE_NAME=? AND k.REFERENCED_COLUMN_NAME=?
+                  AND r.DELETE_RULE IN ('RESTRICT','NO ACTION')
+            }, {Slice => {}}, $parent{table}, $parent{column}) // die;
+            my %checked;
+            for my $key (@$keys) {
+                my ($table, $column) = @{$key}{qw(child_table child_column)};
+                next if $owned{$table} || $checked{$table}{$column}++;
+                my $qt = $dbh->quote_identifier($table);
+                my $qc = $dbh->quote_identifier($column);
+                my $match = '=?';
+                if ($parent{owner_column}) {
+                    my ($parent_table, $parent_key, $owner) = map { $dbh->quote_identifier($_) }
+                        @parent{qw(table column owner_column)};
+                    $match = " IN (SELECT $parent_key FROM $parent_table WHERE $owner=?)";
+                }
+                ($found) = $dbh->selectrow_array("SELECT 1 FROM $qt WHERE $qc$match LIMIT 1", undef, $parent{value});
+                die if $dbh->err;
+                last if $found;
+            }
+            1;
+        };
+        die "Could not verify dependent records\n" unless $ok;
+    }
+    return !!$found;
+}
+
 sub _private_query {
     my ($self, $sql) = @_;
     return $Core::Utils::sensitive_request || $sql =~ /\b(?:config|user_services|servers|storage|epay_[a-z0-9_]+)\b/i;

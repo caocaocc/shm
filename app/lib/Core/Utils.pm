@@ -1137,24 +1137,16 @@ sub ip_rate_limit {
 }
 
 # Rounds a monetary value up to 2 decimal places (ceiling).
-sub round_up {
-    my $val = shift;
-    use POSIX qw(ceil);
-    return ceil( $val * 100 ) / 100;
+sub _decimal_amount {
+    require Math::BigFloat;
+    my $number = Math::BigFloat->new($_[0] // 0);
+    die "金额必须为有限数字\n" unless $number->is_finite;
+    return $number;
 }
 
-# Rounds a monetary value down to 2 decimal places (floor).
-sub round_down {
-    my $val = shift;
-    use POSIX qw(floor);
-    return floor( $val * 100 ) / 100;
-}
-
-# Rounds a monetary value to 2 decimal places (nearest, half up).
-sub round {
-    my $val = shift;
-    return int( $val * 100 + 0.5 ) / 100;
-}
+sub round_up   { _decimal_amount(shift)->bmul(100)->bceil->numify / 100 }
+sub round_down { _decimal_amount(shift)->bmul(100)->bfloor->numify / 100 }
+sub round      { _decimal_amount(shift)->bfround(-2, 'common')->numify }
 
 # Extracts values of a given key from an array of hashes or blessed objects.
 # Usage in templates: misc.pluck(list, 'foo')

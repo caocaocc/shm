@@ -999,6 +999,7 @@ state $routes //= {
         params => {
             user_id => { type => 'integer', required => 1, min => 1 },
             money   => { type => 'number',  required => 1 },
+            currency => { type => 'string', min_length => 3, max_length => 3 },
             pay_system_id => { type => 'string' },
             comment => { type => 'object' },
         },

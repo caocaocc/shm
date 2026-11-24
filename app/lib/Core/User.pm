@@ -858,6 +858,14 @@ sub payment {
         $self = $self->id( $args{user_id} );
     }
 
+    my $currency = get_service('Cloud::Currency')->system_currency;
+    if (defined $args{currency} && uc($args{currency}) ne uc($currency)) {
+        get_service('report')->add_error('付款币种与账户币种不一致');
+        return;
+    }
+    $args{currency} = uc($currency);
+    $args{money} = round($args{money});
+
     my $pays = $self->pays;
 
     if ( defined $args{uniq_key} && $args{uniq_key} ne '' ) {
@@ -971,6 +979,7 @@ sub delete {
         }
     }
 
+    $self->srv('Routing')->queue_change($self->id);
     my @objects = qw(
         UserService
         withdraw
@@ -986,6 +995,16 @@ sub delete {
         promo
         User::Logins
     );
+
+    my @owned_tables = map { get_service($_, user_id => $self->id)->table } @objects;
+    my $usage = $self->query('SELECT 1 FROM withdraw_history WHERE user_id=? AND `usage` IS NOT NULL LIMIT 1', $self->id);
+    if (@$usage || $self->has_external_references(table => 'users', column => 'user_id', value => $self->id,
+            ignore_tables => \@owned_tables)
+        || $self->has_external_references(table => 'pays_history', column => 'id', value => $self->id, owner_column => 'user_id')) {
+        $report->status(409);
+        $report->add_error('该账户或付款仍被业务记录引用，无法删除');
+        return;
+    }
 
     get_service( $_, user_id => $self->id )->delete_all for @objects;
 

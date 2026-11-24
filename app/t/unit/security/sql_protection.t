@@ -115,4 +115,41 @@ my $private = 'synthetic-private-sql-marker';
     unlike(join(' ', @{$logger->{messages}}), qr/\Q$private\E/, 'an explicitly sensitive request protects other SQL tables as well');
 }
 
+subtest 'restrictive module audit references are checked before deletion' => sub {
+    $object->{table} = 'users';
+    $dbh->{references} = [];
+    ok(!$object->has_external_references(table => 'users', column => 'user_id', value => 42), 'an unreferenced parent may be deleted');
+    is_deeply($dbh->{reference_metadata}{binds}, ['users', 'user_id'], 'parent table and column names are metadata bind parameters');
+    $dbh->{references} = [
+        {child_table => 'owned_resources', child_column => 'user_id'},
+        {child_table => 'module_audit', child_column => 'owner_id'},
+        {child_table => 'module_audit', child_column => 'owner_id'},
+    ];
+    $dbh->{reference_checks} = [];
+    $dbh->{referenced_queries} = {'SELECT 1 FROM `module_audit` WHERE `owner_id`=? LIMIT 1' => 1};
+    ok($object->has_external_references(table => 'users', column => 'user_id', value => 42,
+        ignore_tables => ['owned_resources']), 'an unknown module audit table protects its parent');
+    is(scalar @{$dbh->{reference_checks}}, 1, 'owned resources are ignored and repeated metadata does not repeat a query');
+    is_deeply($dbh->{reference_checks}[0]{binds}, [42], 'parent identity is a bind parameter');
+    $dbh->{references} = [{child_table => 'module_audit', child_column => 'payment_id'}];
+    $dbh->{reference_checks} = [];
+    $dbh->{referenced_queries} = {'SELECT 1 FROM `module_audit` WHERE `payment_id` IN (SELECT `id` FROM `pays_history` WHERE `user_id`=?) LIMIT 1' => 1};
+    ok($object->has_external_references(table => 'pays_history', column => 'id', owner_column => 'user_id', value => 42),
+        'a module referencing only a payment can prevent account cleanup');
+    is_deeply($dbh->{reference_checks}[0]{binds}, [42], 'the owner is bound in the parent payment lookup');
+    $dbh->{references} = [{child_table => 'module`audit', child_column => 'owner`id'}];
+    $dbh->{reference_checks} = []; $dbh->{referenced_queries} = {};
+    ok(!$object->has_external_references(table => 'users', column => 'user_id', value => 42), 'unusual metadata identifiers remain safe and usable');
+    is($dbh->{reference_checks}[0]{query}, 'SELECT 1 FROM `module``audit` WHERE `owner``id`=? LIMIT 1', 'database metadata identifiers are quoted by the driver');
+    is($dbh->{RaiseError}, 0, 'reference checks restore the caller database error mode');
+    $dbh->{metadata_fails} = 1;
+    ok(!eval {$object->has_external_references(table => 'users', column => 'user_id', value => 42); 1}, 'metadata failure stops deletion');
+    unlike($@, qr/\Q$private\E/, 'metadata failure never returns database diagnostics');
+    delete $dbh->{metadata_fails}; $dbh->{query_fails} = 1;
+    ok(!eval {$object->has_external_references(table => 'users', column => 'user_id', value => 42); 1}, 'a child lookup failure stops deletion');
+    unlike($@, qr/\Q$private\E/, 'child lookup failure never returns database diagnostics');
+    delete $dbh->{query_fails};
+    ok(!eval {$object->has_external_references(table => 'users', column => 'user_id', value => 42, ignore_tables => {}); 1}, 'invalid ignore lists are rejected');
+};
+
 done_testing();

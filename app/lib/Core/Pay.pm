@@ -14,6 +14,17 @@ use Core::Utils qw(
 
 sub table { return 'pays_history' };
 
+sub delete {
+    my ($self, @args) = @_;
+    if ($self->has_external_references(table => $self->table, column => $self->get_table_key, value => $self->id)) {
+        my $report = $self->srv('report');
+        $report->status(409);
+        $report->add_error('该笔付款已被业务记录引用，无法删除');
+        return;
+    }
+    return $self->SUPER::delete(@args);
+}
+
 sub structure {
     return {
         id => {
