@@ -105,6 +105,11 @@ if ( $ENV{DEV} || $tables_count == 0 ) {
     $config->set_value( { version => $version . $version_prefix } );
 }
 
+use lib "$ENV{SHM_ROOT_DIR}/pay_systems/epay/lib";
+require SHM::Pay::Epay::Install;
+SHM::Pay::Epay::Install::bootstrap($dbh, $ENV{SHM_ROOT_DIR},
+    !$tables_count || ($ENV{DEV} && $ENV{DEV_DB_CLEANUP}));
+
 # Load cloud and download paysystems and templates
 get_service('Cloud::Jobs')->startup();
 

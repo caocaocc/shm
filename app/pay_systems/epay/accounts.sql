@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS epay_accounts (
+    profile VARCHAR(32) PRIMARY KEY,
+    credential_box MEDIUMTEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARACTER SET ascii COLLATE ascii_bin;

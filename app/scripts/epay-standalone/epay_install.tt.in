@@ -1,0 +1,98 @@
+{{ PERL -}}
+use strict;
+use warnings;
+use utf8;
+use MIME::Base64 qw(decode_base64);
+use JSON::PP qw(decode_json);
+use File::Temp qw(tempdir);
+use File::Path qw(make_path);
+use File::Basename qw(dirname);
+use Digest::SHA qw(hmac_sha256_hex);
+use Core::Utils ();
+use SHM ();
+
+my $release = '__RELEASE__';
+my $method = $ENV{REQUEST_METHOD} // '';
+my $data = ($ENV{SHM_ROOT_DIR} || '/app').'/data';
+my $page = {state => 'forbidden', status => 403, message => '请从管理端以有权配置支付和模板的账号打开此页。'};
+my $result = eval {
+    my $user = $stash->get('user');
+    my $args = $stash->get('request')->{params} || {};
+    my $sid = Core::Utils::get_cookies('session_id') || '';
+    die "auth\n" unless $user && $user->is_admin && $sid && ($ENV{PATH_INFO} // '') eq '/template/epay_install';
+    my $session = SHM::validate_session(session_id => $sid);
+    die "auth\n" unless $session && $session->user_id == $user->id;
+    local $user->{login} = SHM::login_from_session($session);
+    die "auth\n" if !$user->{login} && $session->get_settings->{account};
+    die "auth\n" unless $user->can_access(uri => '/admin/template', method => 'PUT') && $user->can_access(uri => '/admin/config', method => 'POST');
+    my $site = $ENV{HTTP_SEC_FETCH_SITE} // '';
+    die "auth\n" if $site eq 'cross-site' || $site eq 'same-site';
+    if (my $origin = $ENV{HTTP_ORIGIN}) {
+        my $scheme = ($ENV{HTTP_X_FORWARDED_PROTO} // '') eq 'https' || ($ENV{HTTPS} // '') =~ /^(?:on|1)$/i ? 'https' : 'http';
+        die "auth\n" unless $site eq 'same-origin' || lc($origin) eq lc($scheme.'://'.($ENV{HTTP_HOST} // ''));
+    }
+    die "auth\n" unless $method eq 'GET' || ($method eq 'POST' && !$ENV{SHM_TEST} && !$ENV{HTTP_TEST});
+    my $nonce = hmac_sha256_hex(join('/', 'epay-install', $user->id, $release), $sid);
+    die "auth\n" if $method eq 'POST' && (($args->{action} // '') ne 'install' || ($args->{nonce} // '') ne $nonce);
+    my $active = readlink("$data/epay/module");
+    my $state = !defined($active) ? 'ready' : $active eq "releases/$release" ? 'installed' : 'update';
+    my %message = (ready => '可为本站安装易支付。', installed => '本站已安装此版本。', update => '可更新本站的易支付。');
+    $page = {state => $state, message => $message{$state}, status => 200, nonce => $nonce};
+    if ($method eq 'POST') {
+        $page = {state => 'conflict', status => 409, message => '安装未完成，请核对已有支付入口、原站密钥和商户配置。'};
+        for my $path ("$data/epay", "$data/pay_systems", "$data/epay/releases") {
+            my $parent = dirname($path);
+            if ((-e $path && (!-d $path || -l $path || !-w $path)) || (!-e $path && -d $parent && !-w $parent)) {
+                $page = {state => 'permissions', status => 409, message => "请核对目录的写入权限：$path"};
+                die "blocked\n";
+            }
+        }
+        my $files = decode_json(decode_base64('__PAYLOAD__'));
+        my $tmp = tempdir('epay-XXXXXXXX', TMPDIR => 1, CLEANUP => 1);
+        for my $name (sort keys %$files) {
+            die "invalid release\n" unless $name =~ m{\A[a-zA-Z0-9_./-]+\z} && $name !~ m{(?:\A/|\.\.)};
+            my $file = "$tmp/$name";
+            make_path(dirname($file));
+            open my $fh, '>:raw', $file or die "staging\n";
+            print {$fh} decode_base64($files->{$name}) or die "staging\n";
+            close $fh or die "staging\n";
+        }
+        # Release the requesting worker's metadata locks before a separate connection creates foreign keys.
+        $user->dbh->commit or die "database busy\n";
+        my %settings;
+        for my $name (qw(DB_HOST DB_PORT DB_NAME DB_USER DB_PASS SHM_ROOT_DIR SHM_DATA_DIR TZ LANG)) {
+            $settings{$name} = $ENV{$name} if defined $ENV{$name};
+        }
+        {
+            require IPC::Open3;
+            local %ENV = (%settings, PATH => '/usr/bin:/bin', PERL5LIB => '/app/lib:/app/conf');
+            my $child = IPC::Open3::open3(my $stdin, my $output, undef, $^X, "$tmp/setup.pl");
+            close $stdin;
+            while (read($output, my $discard, 4096)) {}
+            close $output;
+            waitpid($child, 0);
+            die "install\n" unless $? == 0;
+        }
+        $page = {state => 'success', status => 200, message => '易支付已安装，可以设置商户与充值入口。'};
+    }
+    1;
+};
+my $previous = select STDOUT;
+Core::Utils::print_header(status => $page->{status}, type => 'text/html', 'Cache-Control' => 'no-store',
+    'Access-Control-Allow-Origin' => undef, 'Access-Control-Allow-Credentials' => undef, 'X-Frame-Options' => 'DENY',
+    'Content-Security-Policy' => "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+select $previous;
+$stash->set('epay_page', $page);
+{{ END -}}
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>安装易支付</title><main data-state="{{ epay_page.state | html }}"><h1>安装易支付</h1>
+<p>{{ epay_page.message | html }}</p>
+{{ IF epay_page.nonce }}
+<form method="post" action="?format=html">
+<input type="hidden" name="nonce" value="{{ epay_page.nonce | html }}"><input type="hidden" name="format" value="html">
+<button name="action" value="install">安装或更新易支付</button></form>
+{{ END }}
+{{ IF epay_page.state == 'success' || epay_page.state == 'installed' }}
+<a href="/payment-systems">打开支付系统</a>
+{{ END }}
+</main></html>

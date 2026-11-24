@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+src=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+container_tmp=$(docker compose exec -T --user root core mktemp -d /tmp/shm-epay-install.XXXXXXXX)
+case "$container_tmp" in
+    /tmp/shm-epay-install.*) ;;
+    *) echo 'Could not create payment staging directory' >&2; exit 1 ;;
+esac
+cleanup() {
+    docker compose exec -T --user root core rm -rf -- "$container_tmp"
+}
+trap cleanup EXIT
+(cd "$src" && tar -cf - accounts.sql epay.sql epay.cgi lib setup.pl) |
+    docker compose exec -T --user root core tar -xf - -C "$container_tmp"
+docker compose exec -T --user root core sh -eu -c '
+    data="${SHM_ROOT_DIR:-/app}/data"
+    for name in epay pay_systems; do
+        dir="$data/$name"
+        [ ! -L "$dir" ] || exit 1
+        if [ ! -d "$dir" ]; then
+            mode=0755
+            [ "$name" != epay ] || mode=0700
+            install -d -m "$mode" -o www-data -g www-data "$dir"
+        fi
+    done
+    chmod 0755 "$1"
+    exec runuser -u www-data -- perl "$1/setup.pl"
+' sh "$container_tmp"
