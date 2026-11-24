@@ -255,7 +255,7 @@ INSERT IGNORE INTO `user_groups` VALUES
 (4,'Поддержка',1,'deny','[{"uri": "/admin/user", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/search", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/accounts", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/service", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/service/*", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/pay", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/bonus", "action": "allow", "methods": ["GET"]}]'),
 (5,'Viewer',1,'deny','[{"uri": "/admin/*", "action": "allow", "methods": ["GET"]}]');
 
-INSERT IGNORE INTO `withdraw_history` VALUES
+INSERT IGNORE INTO `withdraw_history` (withdraw_id,user_id,create_date,withdraw_date,end_date,cost,discount,bonus,months,total,service_id,qnt,user_service_id) VALUES
 (3519,40092,'2016-07-29 12:39:08','2016-07-29 12:39:47','2017-07-29 12:39:46',590.00,0,11.80,12,578.20,11,1,2949),
 (3357,40094,'2016-02-15 21:55:29','2016-02-15 21:55:29',NULL,0.00,0,0.00,12,0.00,63,1,2801),
 (3583,40092,'2016-09-22 14:52:01','2016-09-22 14:51:27','2017-09-22 14:51:26',0.00,0,0.00,12,0.00,63,1,16),

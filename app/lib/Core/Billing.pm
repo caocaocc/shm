@@ -24,8 +24,97 @@ use Time::Local 'timelocal_nocheck';
 use base qw( Core::System::Service );
 use Core::System::ServiceManager qw( get_service logger );
 
+use Core::Billing::Traffic qw(quota reading period_usage used_bytes);
+use POSIX qw(strftime);
 use Core::Billing::Honest;
 use Core::Billing::Simpler;
+
+# Keep the account, service and withdrawal under the same SHM transaction.
+our $in_metered_write;
+sub metered_write {
+    my ($us, $action) = @_;
+    return $action->() if $in_metered_write;
+    local $in_metered_write = 1;
+    my $dbh = $us->dbh;
+    local $dbh->{RaiseError} = 1;
+    my $bill = $us->get_withdraw_id || 0;
+    my $callbacks = get_service('config')->local->{_post_commit_callbacks} ||= [];
+    my $count = @$callbacks;
+    $dbh->do('SAVEPOINT measured_term');
+    my ($result, @locked);
+    my $ok = eval {
+        $us->user->reload(extra => 'FOR UPDATE');
+        my @pending = ($us);
+        while (@pending) {
+            my $item = shift @pending;
+            my $record = $item->id($item->id);
+            my $fresh = $record->reload(extra => 'FOR UPDATE') or die 'service missing';
+            $item->res($fresh);
+            my $withdraw = $item->withdraw;
+            if ($withdraw) {
+                $withdraw->reload(extra => 'FOR UPDATE') or die 'withdraw missing';
+            }
+            push @locked, [$item, $record, $withdraw];
+            push @pending, @{$item->children};
+        }
+        die "service changed" if ($us->get_withdraw_id || 0) != $bill;
+        $result = $action->();
+        1;
+    };
+    if (!$ok || !defined $result) {
+        $dbh->do('ROLLBACK TO SAVEPOINT measured_term');
+        splice @$callbacks, $count;
+        $us->user->reload(extra => 'FOR UPDATE');
+        for my $entry (@locked) {
+            my ($item, $record, $withdraw) = @$entry;
+            $item->res(scalar $record->reload(extra => 'FOR UPDATE'));
+            $withdraw->reload(extra => 'FOR UPDATE') if $withdraw;
+        }
+    }
+    $dbh->do('RELEASE SAVEPOINT measured_term');
+    die "计量账务更新失败，请刷新后重试。\n" unless $ok;
+    return $result;
+}
+
+# Quote each due item in the same order as process_service_recursive. A mixed
+# package needs enough real cash for all charges after each plan's bonus cap.
+sub composite_cash_required {
+    my ($root, $tariff, $price, $bonus) = @_;
+    my $cash = 0;
+    my $measured = 0;
+    my @work = ([$root, $tariff, $price]);
+    while (my $entry = shift @work) {
+        my ($item, $plan, $amount) = @$entry;
+        unless (defined $amount) {
+            $plan = $item->service;
+            $amount = 0;
+            if (my $bill = $item->withdraw) {
+                if ($bill->unpaid) {
+                    $amount = $bill->get_total;
+                } else {
+                    next unless $item->has_expired && !$plan->no_auto_renew && $item->get_next >= 0;
+                    my %invoice;
+                    if ($item->get_next) {
+                        $plan = get_service('service', _id => $item->get_next) or next;
+                        %invoice = calc_withdraw($item->billing, $plan->get);
+                    } else {
+                        %invoice = $bill->next;
+                        %invoice = calc_withdraw($item->billing, $bill->get, months => $plan->get_period, bonus => 0)
+                            unless %invoice;
+                    }
+                    $amount = $invoice{total};
+                }
+            }
+        }
+        $measured ||= quota($plan) ? 1 : 0;
+        my $part = calc_available_bonuses($plan, $bonus, $amount);
+        $part = $amount if $part > $amount;
+        $bonus = round($bonus - $part);
+        $cash = round($cash + $amount - $part);
+        unshift @work, map { [$_] } @{$item->children};
+    }
+    return $measured ? $cash : undef;
+}
 
 sub awaiting_payment {
     my $self = shift;
@@ -97,6 +186,14 @@ sub process_service_recursive {
     my %args = @_;
 
     return undef unless ref $service;
+    unless ($in_metered_write) {
+        my $plan = $service->service;
+        my $next_plan = $service->get_next > 0 ? get_service('service', _id => $service->get_next) : undef;
+        if (quota($plan) || $plan->get_is_composite || ($next_plan && quota($next_plan))
+            || ($service->withdraw && $service->withdraw->get_usage)) {
+            return metered_write($service, sub { process_service_recursive($service, $event, %args) });
+        }
+    }
 
     if ( $event = process_service( $service, $event, %args ) ) {
         logger->info('Process service: '. $service->id . ", Result: [$event]" );
@@ -169,7 +266,7 @@ sub add_withdraw {
     my $us = shift;
     my %wd = @_;
 
-    delete @wd{ qw/ withdraw_id create_date end_date withdraw_date user_service_id / };
+    delete @wd{ qw/ withdraw_id create_date end_date withdraw_date user_service_id usage / };
     return $us->srv('wd', usi => $us->id )->add( %wd );
 }
 
@@ -244,12 +341,19 @@ sub calc_payment {
     my $user  = $self->user;
     my $bonus = calc_available_bonuses( $service, $user->get_bonus, $total );
 
+    return if quota($service) && $total > $bonus && $user->get_balance + $bonus < $total;
+
     my $check_total = $total;
     my $root = $self->top_parent;
     if ( $root->service->get_is_composite ) {
         if ( $self->id == $root->id ) {
             # I'm a root
-            $check_total = $self->wd_total_composite;
+            my $cash = composite_cash_required($self, $service, $total, $user->get_bonus);
+            if (defined $cash) {
+                return 0 if $cash > 0 && $cash > $user->get_balance;
+            } else {
+                $check_total = $self->wd_total_composite;
+            }
         } else {
             # I'm a child
             return 0 unless $root->is_paid;
@@ -290,10 +394,11 @@ sub is_pay {
         return undef;
     }
 
+    my $sample = shift;
+    my $limit = quota($self->service);
+    return metered_write($self, sub { is_pay($self, $sample) }) if $limit && !$in_metered_write;
     my $wd = $self->withdraw;
-    # Already withdraw
     return 1 if $wd->get_withdraw_date;
-
     my $pay = calc_payment( $self, $wd->get_total ) or return 0;
     my ( $bonus, $total ) = @{$pay}{qw( bonus total )};
 
@@ -304,8 +409,10 @@ sub is_pay {
         bonus         => $bonus,
         total         => $total,
         withdraw_date => now,
+        ($limit ? (usage => period_usage($limit, $sample ? $$sample : reading($self))) : ()),
     );
 
+    $wd->reload if $limit;
     return 1;
 }
 
@@ -372,6 +479,15 @@ sub prolongate {
         return undef;
     }
 
+    my $wd = $self->withdraw;
+    my $usage = $wd && $wd->get_usage;
+    my $boundary;
+    if ($usage && !exists $usage->{used_bytes} && $self->has_expired) {
+        return metered_write($self, sub { prolongate($self, %args) }) unless $in_metered_write;
+        my $sample = reading($self);
+        $boundary = \$sample;
+        $wd->set(usage => {%$usage, used_bytes => scalar bill_usage($wd, $usage, $sample)});
+    }
     if ( $self->service->no_auto_renew && !$args{force} ) {
         logger->debug( sprintf "Block service because of `no_auto_renew` is set for usi %d", $self->id );
         return block( $self );
@@ -413,7 +529,7 @@ sub prolongate {
         }
     }
 
-    unless ( is_pay( $self ) ) {
+    unless ( is_pay( $self, $boundary ) ) {
         logger->info('Not enough money');
         return $self->get_status eq STATUS_BLOCK ? undef : block( $self );
     }
@@ -525,9 +641,56 @@ sub get_service_discount {
     return $percent;
 }
 
+sub bill_usage {
+    my ($wd, $usage, $sample) = @_;
+    my $opening = strftime('%Y-%m-%dT%H:%M:%S.000Z', gmtime(string_to_utime($wd->get_withdraw_date)));
+    return scalar used_bytes($usage, $sample, $opening);
+}
+
+# Mark a measured bill closed once, before replacing its service or expiry.
+sub close_meter {
+    my ($us, $date, $refund) = @_;
+    my $wd = $us->withdraw or return 1;
+    my $usage = $wd->get_usage or return 1;
+    return 1 if exists $usage->{used_bytes};
+    my ($cash, $bonus) = ($wd->get_total, $wd->get_bonus);
+    my $paid = round($cash + $bonus);
+    my $options = $us->service->settings;
+    my $early = $refund && $wd->get_end_date && $date lt $wd->get_end_date;
+    my $used = $early && !$paid ? undef : bill_usage($wd, $usage, scalar reading($us));
+    if ($early && $paid > 0 && !$options->{allow_return_full_wd} && !$options->{no_money_back} && !defined $used) {
+        get_service('report')->status(503);
+        get_service('report')->add_error('流量读数暂不可用，请重试。');
+        return;
+    }
+    $wd->set(usage => {%$usage, used_bytes => $used});
+    return 1 unless $early;
+    my %range = (withdraw_date => $wd->get_withdraw_date, end_date => $wd->get_end_date,
+                 cost => 1_000_000, period => $wd->get_months, discount => 0, qnt => 1);
+    my $elapsed = calc_total_by_date_range($us->billing, %range, end_date => $date);
+    my $full = calc_total_by_date_range($us->billing, %range);
+    my $ratio = $full->{total} ? $elapsed->{total} / $full->{total} : 0;
+    my $traffic = ($used || 0) / $usage->{limit_bytes};
+    $ratio = $traffic if $traffic > $ratio;
+    $ratio = 0 if $ratio < 0 || $options->{allow_return_full_wd};
+    $ratio = 1 if $ratio > 1 || $options->{no_money_back};
+    # Allocate the rounded charge between the two original payment sources.
+    my $consumed = round($paid * $ratio);
+    my $kept = $paid > 0 ? round($consumed * $cash / $paid) : 0;
+    my $points = round($consumed - $kept);
+    $wd->set(total => $kept, bonus => $points, months => $elapsed->{months}, end_date => $date);
+    my $credit = round($bonus - $points);
+    $us->user->set_balance(balance => round($cash - $kept), bonus => $credit);
+    $us->user->bonus->add(bonus => $credit, comment => {withdraw_id => $wd->id}) if $credit;
+    return 1;
+}
+
 sub money_back {
     my $self = shift;
     my $date = shift || $self->get_expire;
+    if ($self->withdraw && $self->withdraw->get_usage) {
+        return metered_write($self, sub { close_meter($self, $date, 1) });
+    }
 
     return undef unless $self->get_withdraw_id;
 
@@ -641,6 +804,7 @@ sub apply_partial_period {
     my $period = shift;
     my $service = shift || $us->service;
 
+    return if quota($service);
     my $pay = calc_payment( $us, $wd_ref->{total}, $service );
     return if $pay;
 

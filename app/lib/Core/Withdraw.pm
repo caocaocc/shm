@@ -70,6 +70,7 @@ sub structure {
             required => 1,
             title => '服务 ID',
         },
+        usage => { type => 'json', title => '账期用量', readOnly => 1 },
         qnt => {
             type => 'number',
             default => 1,
@@ -81,6 +82,17 @@ sub structure {
             title => '用户服务 ID',
         },
     }
+}
+
+sub convert_sql_structure_data {
+    my ($self, $row) = @_;
+    $self->SUPER::convert_sql_structure_data($row);
+    delete $row->{usage} if ref($row) eq 'HASH' && !defined $row->{usage};
+}
+
+sub traffic_limit_bytes {
+    my $period = shift->get_usage || {};
+    return $period->{limit_bytes} // 0;
 }
 
 sub stats {
@@ -129,7 +141,7 @@ sub add {
         return undef;
     }
 
-    delete $args{ $self->get_table_key };
+    delete @args{ $self->get_table_key, 'usage' };
 
     my $service = $self->srv('service', _id => $args{service_id} );
     unless ( $service ) {
@@ -163,6 +175,9 @@ sub list_for_api {
     $self->found_rows( $self->SUPER::found_rows() );
 
     for ( @arr ) {
+        if (my $period = delete $_->{usage}) {
+            $_->{usage} = {map { $_ => $period->{$_} } grep { exists $period->{$_} } qw(limit_bytes used_bytes)};
+        }
         if ( my $service = get_service('service', _id => $_->{service_id} ) ) {
             $_->{name} = $service->get_name;
         } else {
@@ -199,7 +214,13 @@ sub paid {
 }
 sub unpaid { $_[0]->paid ? 0 : 1 };
 
-*delete = \&delete_unpaid;
+sub delete {
+    my $self = shift;
+    return $self->delete_unpaid(@_) unless $self->get_usage;
+    $self->report->status(409);
+    $self->report->add_error('已付款的计量账单不能删除');
+    return;
+}
 
 sub delete_unpaid {
     my $self = shift;
@@ -226,6 +247,17 @@ sub api_set {
     unless ( $us ) {
         get_service('report')->add_error( "User service not exists" );
         return \%args;
+    }
+
+    # Payment and manual correction take the same locks. A draft may have
+    # become a paid withdrawal after the admin form was opened.
+    $us->user->reload(extra => 'FOR UPDATE') or return;
+    $us->reload(extra => 'FOR UPDATE') or return;
+    my $fresh = $self->reload(extra => 'FOR UPDATE') or return;
+    if (exists $args{usage} || $fresh->{usage}) {
+        get_service('report')->status(409);
+        get_service('report')->add_error('已付款的计量账单不能修改');
+        return;
     }
 
     my $service = $self->srv('service', _id => $args{service_id} );

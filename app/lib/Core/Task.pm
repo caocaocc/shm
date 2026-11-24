@@ -67,6 +67,13 @@ sub make_task {
         }
     }
 
+    my $metered_create = $self->event->{name} eq EVENT_CREATE && $self->settings->{withdraw_id};
+    if ($metered_create) {
+        my $us = get_service('us', _id => $self->settings->{user_service_id});
+        return $self->task_answer(TASK_SKIPPED) unless $us && $us->get_withdraw_id == $self->settings->{withdraw_id};
+        my $usage = $us->withdraw->get_usage;
+        return $self->task_answer(TASK_SKIPPED) unless $usage && !exists $usage->{used_bytes};
+    }
     my $transport = $self->transport;
     unless ( $transport ) {
         return $self->task_answer( TASK_STUCK, error => 'Transport not exists' );
@@ -89,6 +96,20 @@ sub make_task {
         if ( my $usi = $self->settings->{user_service_id} ) {
             my $us = get_service('us', _id => $usi );
 
+            my ($bill, $usage);
+            if ($metered_create) {
+                # Provisioning runs outside the service-row lock. Its receipt
+                # applies only to the same, still-open withdrawal.
+                my $row = $us && $us->reload(extra => 'FOR UPDATE');
+                return $self->task_answer(TASK_SKIPPED) unless $row
+                    && $row->{withdraw_id} == $self->settings->{withdraw_id}
+                    && $row->{status} ne STATUS_BLOCK && $row->{status} ne STATUS_REMOVED;
+                $bill = $us->withdraw;
+                my $fresh = $bill && $bill->reload(extra => 'FOR UPDATE');
+                $usage = $fresh && $fresh->{usage};
+                return $self->task_answer(TASK_SKIPPED) unless $usage && !exists $usage->{used_bytes};
+            }
+
             if ( !$us->settings->{server_id} &&
                  $response_data &&
                  $response_data->{server} &&
@@ -100,6 +121,12 @@ sub make_task {
                 }
             }
 
+            if ($bill && !exists $usage->{start_bytes}) {
+                require Core::Billing::Traffic;
+                my $sample = Core::Billing::Traffic::reading($us);
+                return $self->task_answer(TASK_FAIL, error => '流量初始读数暂不可用') unless $sample;
+                $bill->set(usage => Core::Billing::Traffic::period_usage($usage->{limit_bytes}, $sample));
+            }
             $us->set_status_by_event( $self->event->{name} );
         }
     } elsif ( $status == SKIP ) {

@@ -299,6 +299,7 @@ CREATE TABLE IF NOT EXISTS `withdraw_history` (
   `service_id` int(11) NOT NULL,
   `qnt` double NOT NULL DEFAULT '1',
   `user_service_id` int(11) NOT NULL,
+  `usage` json DEFAULT NULL,
   PRIMARY KEY (`withdraw_id`),
   KEY idx_user_id_service_id (`user_id`,`service_id`),
   KEY idx_user_id_user_service_id (`user_id`,`user_service_id`)

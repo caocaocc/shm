@@ -249,6 +249,24 @@ sub delete {
         return undef;
     }
 
+    my @tree = ($self);
+    my @measured;
+    while (@tree) {
+        my $us = shift @tree;
+        push @tree, @{$us->children};
+        push @measured, $us if $us->withdraw && $us->withdraw->get_usage;
+    }
+    if (@measured) {
+        return Core::Billing::metered_write($self, sub {
+            for my $us (@measured) {
+                my $at = $us->has_expired ? $us->get_expire : now;
+                return unless Core::Billing::close_meter($us, $at, 1);
+            }
+            $self->make_expired;
+            $self->touch(EVENT_REMOVE);
+            return scalar $self->get;
+        });
+    }
     $self->make_expired;
     $self->touch( EVENT_REMOVE );
 
@@ -509,6 +527,9 @@ sub make_commands_by_event {
     $self->status( STATUS_PROGRESS, event => $e ) if status_by_event( $e );
 
     $args{settings}{user_service_id} = $self->id + 0;
+    if ($e eq EVENT_CREATE && $self->withdraw && $self->withdraw->get_usage) {
+        $args{settings}{withdraw_id} = $self->get_withdraw_id + 0;
+    }
     $args{settings}{server_id} //= $self->settings->{server_id} + 0 if $self->settings->{server_id};
 
     for ( @commands ) {
@@ -794,6 +815,13 @@ sub finish {
     return 0 if $self->get_status ne STATUS_ACTIVE;
     return 0 if $self->has_expired;
 
+    if ($self->withdraw && $self->withdraw->get_usage) {
+        return Core::Billing::metered_write($self, sub {
+            return unless Core::Billing::close_meter($self, now, $args{money_back});
+            $self->make_expired;
+            return 1;
+        });
+    }
     if ( $self->make_expired ) {
         $self->money_back if $args{money_back};
         return 1;
@@ -1037,6 +1065,14 @@ sub change {
         }
     }
 
+    my $meter = $self->withdraw && $self->withdraw->get_usage;
+    return Core::Billing::metered_write($self, sub { $self->change(%args) })
+        if $meter && !$Core::Billing::in_metered_write;
+    if ($meter && $args{finish_active} && !$self->has_expired &&
+        ($self->get_status eq STATUS_ACTIVE || $self->get_status eq STATUS_BLOCK)) {
+        return unless Core::Billing::close_meter($self, now, 1);
+        $self->make_expired;
+    }
     $self->set( next => $service->id );
 
     if ( $self->get_status eq STATUS_WAIT_FOR_PAY || $self->get_status eq STATUS_BLOCK ) {

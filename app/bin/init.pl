@@ -33,6 +33,21 @@ switch_user( 1 );
 
 my $tables_count = $sql->do("SHOW TABLES");
 
+# A development reset must never discard real payment orders or measured bills.
+sub has_column {
+    my ($table, $column) = @_;
+    return $dbh->selectrow_array('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?', undef, $table, $column);
+}
+my ($old_ledger) = $dbh->selectrow_array("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='consumption_periods'");
+defined $old_ledger or die "无法核对既有计量账本。\n";
+if ($old_ledger && $dbh->selectrow_array('SELECT 1 FROM consumption_periods LIMIT 1')) {
+    die "历史计量账期仍有数据，请核对后再升级。\n";
+}
+if ($ENV{DEV} && $ENV{DEV_DB_CLEANUP} && $tables_count) {
+    die "开发库含有分流记录，已停止清理。\n" if has_column('storage','name') && $dbh->selectrow_array("SELECT 1 FROM storage WHERE user_id=0 AND (name LIKE 'routing:%' OR name LIKE 'routingp:%') LIMIT 1");
+    die "开发库含有支付订单，已停止清理。\n" if has_column('epay_orders','out_trade_no') && $dbh->selectrow_array('SELECT 1 FROM epay_orders LIMIT 1');
+    die "开发库含有计量账单，已停止清理。\n" if has_column('withdraw_history','usage') && $dbh->selectrow_array('SELECT 1 FROM withdraw_history WHERE `usage` IS NOT NULL LIMIT 1');
+}
 if ( $ENV{DEV} || $tables_count == 0 ) {
     if ( $ENV{DEV} && $ENV{DEV_DB_CLEANUP} && $tables_count ) {
         print "正在清理开发数据库… ";
@@ -104,6 +119,9 @@ if ( $ENV{DEV} || $tables_count == 0 ) {
 
     $config->set_value( { version => $version . $version_prefix } );
 }
+
+$dbh->do('ALTER TABLE withdraw_history ADD COLUMN `usage` JSON DEFAULT NULL')
+    unless has_column('withdraw_history','usage');
 
 use lib "$ENV{SHM_ROOT_DIR}/pay_systems/epay/lib";
 require SHM::Pay::Epay::Install;
