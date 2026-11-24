@@ -118,6 +118,7 @@ use URI::Escape qw( uri_escape_utf8 uri_unescape );
 
 our %in;
 our $is_header = 0;
+our ($sensitive_request, $private_response);
 my $cgi = CGI->new;
 
 sub parse_date {
@@ -332,6 +333,7 @@ sub http_content_range {
 }
 
 sub decode_json {
+    local $@;
     my $data = shift || return undef;
     return undef if $data =~ /^\s*$/;
     return $data if ref $data;
@@ -339,8 +341,8 @@ sub decode_json {
     utf8::decode( $data );
 
     my $json;
-    eval{ $json = JSON->new->latin1->relaxed->decode( $data ) } or do {
-        get_service('logger')->warning("Incorrect JSON field for decode: " . $data);
+    eval{ $json = JSON->new->latin1->relaxed->decode( $data ); 1 } or do {
+        get_service('logger')->warning('Invalid JSON input') unless $sensitive_request;
     };
 
     return $json;
@@ -396,6 +398,7 @@ sub prepare_json_data {
 # convert to JSON as it is (with internal Perl encoding)
 # for compatibility with other Cyrillic texts in the templates
 sub encode_json_perl {
+    local $@;
     my $data = shift || return undef;
     my %args = (
         pretty => 0,
@@ -405,14 +408,15 @@ sub encode_json_perl {
     $data = prepare_json_data($data);
 
     my $json;
-    eval{ $json = JSON->new->canonical->pretty( $args{pretty} )->encode( obj_to_json $data ) } or do {
-        get_service('logger')->warning("Incorrect JSON data for encode: " . $data);
+    eval{ $json = JSON->new->canonical->pretty( $args{pretty} )->encode( obj_to_json $data ); 1 } or do {
+        get_service('logger')->warning('JSON serialization failed') unless $sensitive_request;
     };
 
     return $json;
 }
 
 sub encode_json {
+    local $@;
     my $data = shift || return undef;
     my %args = (
         pretty => 0,
@@ -422,8 +426,8 @@ sub encode_json {
     $data = prepare_json_data($data);
 
     my $json;
-    eval{ $json = JSON->new->latin1->canonical->pretty( $args{pretty} )->encode( encode_utf8($data) ) } or do {
-        get_service('logger')->warning("Incorrect JSON data for encode: " . $data);
+    eval{ $json = JSON->new->latin1->canonical->pretty( $args{pretty} )->encode( encode_utf8($data) ); 1 } or do {
+        get_service('logger')->warning('JSON serialization failed') unless $sensitive_request;
     };
 
     return $json;
@@ -877,6 +881,11 @@ sub print_header {
     # Не печатаем заголовки, если скрипт запущен не из под HTTP
     return undef unless $ENV{REQUEST_METHOD};
 
+    if ($private_response) {
+        delete @args{'Access-Control-Allow-Origin', 'Access-Control-Allow-Credentials'};
+        $args{'Cache-Control'} = 'private, no-store';
+        $args{'X-Content-Type-Options'} = 'nosniff';
+    }
     print $cgi->header( map +( "-$_" => $args{$_} ), keys %args );
     $is_header = 1;
 }

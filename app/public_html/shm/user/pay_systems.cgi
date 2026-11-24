@@ -13,13 +13,16 @@ my @ret;
 for my $item ( keys %{ $list } ) {
     my $p = $list->{ $item };
 
-    if ( $p->{ show_for_client } ) {
+    if (ref($p) eq 'HASH' && $p->{show_for_client}) {
+        my %visible = map { exists($p->{$_}) && !ref($p->{$_}) ? ($_ => $p->{$_}) : () }
+            qw(name paysystem action payment_url payment_mode template template_id weight recurring internal allow_deletion);
+        $visible{show_for_client} = 1;
         if ( exists $p->{template_id} ) {
             if ( my $template = get_service('template', _id => $p->{template_id} ) ) {
-                $p->{template} = $template->parse();
+                $visible{template} = $template->parse();
             }
         }
-        push @ret, $p;
+        push @ret, \%visible;
     }
 }
 

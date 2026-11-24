@@ -4,6 +4,7 @@ use v5.14;
 use utf8;
 use parent 'Core::Base';
 use Core::Base;
+use Core::Privacy ();
 
 sub table { return 'logs_api' }
 sub dbh { shift->dbh_auto_commit }
@@ -32,6 +33,9 @@ sub _mask_sensitive_args {
 
 sub _is_sensitive_key {
     my $key = lc( shift // '' );
+    (my $compact = $key) =~ s/[^a-z0-9]//g;
+    return 1 if $compact =~ /password|secret|(?:private|public|md5)key|authorization/;
+    return 1 if $compact =~ /^(?:key|sign|postdata|patchdata|putdata|deletedata|outboundtext|credentialversions)$/;
     return $key =~ /^(?:password|token|otp_token|session_id|secret|private_key|hash|code|id_token|code_verifier|client_secret|nonce|captcha_token|captcha_answer|credential_id|userhandle|authenticatordata|clientdatajson|attestationobject|signature)$/;
 }
 
@@ -96,7 +100,13 @@ sub add {
         @_,
     );
 
-    $args{args} = _mask_sensitive_args( $args{args} ) if ref $args{args};
+    $args{url} = Core::Privacy::request_path($args{url});
+    if ($Core::Utils::sensitive_request || Core::Privacy::private_path($args{url})) {
+        $args{args} = { redacted => 1 };
+        delete $args{response_error};
+    } elsif (ref $args{args}) {
+        $args{args} = _mask_sensitive_args($args{args});
+    }
 
     $self->{user_id} = 0 unless $self->user_id;
 

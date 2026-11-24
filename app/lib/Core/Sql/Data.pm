@@ -160,22 +160,42 @@ sub affected_rows {
     return $self->dbh->rows < 1 ? 0 : $self->dbh->rows;
 }
 
+sub _private_query {
+    my ($self, $sql) = @_;
+    return $Core::Utils::sensitive_request || $sql =~ /\b(?:config|user_services|servers|storage|epay_[a-z0-9_]+)\b/i;
+}
+
+# DBI may print warnings or include bound values in an exception. Preserve the
+# caller's error mode and return values while keeping private driver text local.
+sub _run_statement {
+    my ($self, $sql, $execute) = @_;
+    my $dbh = $self->dbh;
+    return $execute->($dbh, 0) unless $self->_private_query($sql);
+    local $dbh->{PrintError} = 0;
+    local $dbh->{ShowErrorStatement} = 0;
+    local $@;
+    my $result;
+    {
+        local $SIG{__DIE__};
+        my $ok = eval { $result = $execute->($dbh, 1); 1 };
+        die "Private database operation failed\n" unless $ok;
+    }
+    return $result;
+}
+
 sub do {
-    my $self = shift;
-    my $query = shift;
-    my @args = @_;
-
-    $self->log( $query, \@args );
-
-    my $res = $self->dbh->do( $query, undef, @args ) or do {
-        logger->error( sprintf "SQL QUERY: %s [%s], ERROR: %s",
-            $query,
-            join(',', @args ),
-            $self->dbh->errstr,
-        );
-        return undef;
-    };
-    return $res eq '0E0' ? 0 : $res;
+    my ($self, $query, @args) = @_;
+    $self->log($query, \@args);
+    return $self->_run_statement($query, sub {
+        my ($dbh, $private) = @_;
+        my $rows = $dbh->do($query, undef, @args);
+        unless (defined $rows) {
+            logger->error($private ? 'Private database write failed'
+                : sprintf('SQL QUERY: %s [%s], ERROR: %s', $query, join(',', @args), $dbh->errstr));
+            return;
+        }
+        return $rows eq '0E0' ? 0 : $rows;
+    });
 }
 
 sub add_post_commit_callback {
@@ -206,6 +226,7 @@ sub log {
     my $self = shift;
     my $query = shift;
     my $binds = shift;
+    if ($self->_private_query($query)) { logger->debug('Private database operation'); return; }
 
     logger->debug(
         'SQL Query: "',
@@ -215,40 +236,34 @@ sub log {
 }
 
 sub query {
-    my $self = shift;
-    my $query = shift;
-    my @args = @_;
-
-    $self->log( $query, \@args );
-
-    my $sth = $self->dbh->prepare_cached( $query ) or die $self->dbh->errstr;
-
-    for ( 0..scalar( @args )-1 ) {
-        $sth->bind_param( $_+1, $args[$_] );
-    }
-    $sth->execute() or die $self->dbh->errstr;
-
-    my @res;
-
-    while (my $ref = $sth->fetchrow_hashref()) {
-        push @res, $ref;
-    }
-    $sth->finish;
-
-    logger->debug("\033[0;93m". 'SQL result: found rows:' ."\033[0m " . scalar @res );
-
-    return wantarray ? @res : \@res;
+    my ($self, $query, @args) = @_;
+    $self->log($query, \@args);
+    my $rows = $self->_run_statement($query, sub {
+        my ($dbh) = @_;
+        my $sth = $dbh->prepare_cached($query) or die $dbh->errstr;
+        for my $i (0 .. $#args) {
+            $sth->bind_param($i + 1, $args[$i]) or die $dbh->errstr;
+        }
+        $sth->execute or die $dbh->errstr;
+        my @result;
+        while (my $row = $sth->fetchrow_hashref) { push @result, $row; }
+        die $dbh->errstr if $dbh->err;
+        $sth->finish;
+        return \@result;
+    });
+    logger->debug('SQL result: found rows: ' . @$rows);
+    return wantarray ? @$rows : $rows;
 }
 
 sub query_by_name {
-    my $self = shift;
-    my $query = shift;
-    my $key_field = shift;
-    my @args = @_;
-
-    $self->log( $query, \@args );
-
-    return $self->dbh->selectall_hashref( $query, $key_field, undef, @args );
+    my ($self, $query, $key, @args) = @_;
+    $self->log($query, \@args);
+    return $self->_run_statement($query, sub {
+        my ($dbh, $private) = @_;
+        my $rows = $dbh->selectall_hashref($query, $key, undef, @args);
+        die 'Private database read failed' if $private && !defined $rows;
+        return $rows;
+    });
 }
 
 sub convert_sql_structure_data {

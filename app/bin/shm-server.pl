@@ -11,6 +11,7 @@ use CGI;
 use POSIX ();
 use Time::HiRes qw(time);
 use Data::Dumper;
+use Core::Privacy ();
 
 # Override exit() globally (for ALL packages) to throw an exception
 # instead of killing the worker process
@@ -136,6 +137,8 @@ while ($request_count < $max_requests && $request->Accept() >= 0) {
 
         my $request_uri = $ENV{REQUEST_URI} // $ENV{DOCUMENT_URI} // $ENV{SCRIPT_NAME} // '';
 
+        my $audit_path = Core::Privacy::request_path($request_uri);
+
         # Check if we should skip logging
         my $skip_log = 0;
         foreach my $pattern (@skip_logging) {
@@ -157,14 +160,14 @@ while ($request_count < $max_requests && $request->Accept() >= 0) {
             unless ($skip_log) {
                 my $method = $ENV{REQUEST_METHOD} // 'UNKNOWN';
                 my $ms = int((time - $req_start) * 1000);
-                log_msg("$method $request_uri - script: $script_filename ${ms}ms");
+                log_msg("$method $audit_path - script: $script_filename ${ms}ms");
             }
         } else {
             print "Status: 404 Not Found\r\n";
             print "Content-Type: text/plain\r\n\r\n";
-            print "Not Found: " . ($script_filename || $request_uri) . "\n";
+            print "Not Found: " . ($script_filename || $audit_path) . "\n";
             unless ($skip_log) {
-                log_msg("404 - file not found, not a regular executable file, or empty mapping: " . ($script_filename || $request_uri));
+                log_msg("404 - file not found, not a regular executable file, or empty mapping: " . ($script_filename || $audit_path));
             }
         }
     };
@@ -284,7 +287,8 @@ sub execute_do {
             print "Content-Type: text/plain\r\n\r\n";
             print "Script timeout\n";
         } else {
-            log_msg("Script error: $script - $err");
+            my $path = Core::Privacy::request_path($ENV{PATH_INFO});
+            log_msg(Core::Privacy::private_path($path) ? "Private script failed: $script" : "Script error: $script - $err");
             print "Status: 500 Internal Server Error\r\n";
             print "Content-Type: text/plain\r\n\r\n";
             print "Internal Server Error\n";

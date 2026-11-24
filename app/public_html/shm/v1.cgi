@@ -5,6 +5,7 @@ use utf8;
 use SHM qw(:all);
 
 use Router::Simple;
+use Core::Privacy ();
 use Core::System::ServiceManager qw( get_service );
 use Core::Utils qw(
     parse_args
@@ -2458,8 +2459,23 @@ our %in;
 
 if ( my $p = $router->match( sprintf("%s:%s", $ENV{REQUEST_METHOD}, $uri )) ) {
 
+    local $Core::Utils::private_response = $p->{private_json};
+    local $Core::Utils::sensitive_request = $p->{private_json} || Core::Privacy::private_path(Core::Privacy::request_path($uri));
+    if ($p->{private_json}) {
+        if (my $error = Core::Privacy::private_request_error(\%ENV)) {
+            my $status = $error eq 'ORIGIN_DENIED' ? 403 : 400;
+            print_header(status => $status);
+            print_json({status => $status, error => $error});
+            exit 0;
+        }
+    }
     my $api_descr = $p->{swagger}{summary};
     %in = parse_args( auto_parse_json => $p->{skip_auto_parse_json} ? 0 : 1 );
+    if ($p->{private_json} && grep { !exists $p->{params}{$_} } keys %in) {
+        print_header(status => 400);
+        print_json({status => 400, error => 'REQUEST_INVALID'});
+        exit 0;
+    }
     $in{filter} = decode_json( $in{filter} ) if $in{filter};
 
     if ( my $splat = $p->{splat} ) {
