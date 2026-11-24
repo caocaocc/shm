@@ -22,12 +22,12 @@ if ( -f "$ENV{SHM_ROOT_DIR}/version.json" ) {
     $version = $ENV{SHM_VERSION_OVERRIDE} || $version_data->{version};
     $version_prefix = "-" . $version_data->{commitSha};
     $version =~s/-.+$//;
-    say "SHM version: $version$version_prefix";
+    say "SHM 版本： $version$version_prefix";
 }
 
 my $logger = get_service('logger');
 my $config = get_service('config');
-my $dbh = db_connect( %{ $config->file->{config}{database} } ) or die "Can't connect to DN";
+my $dbh = db_connect( %{ $config->file->{config}{database} } ) or die "无法连接数据库";
 $config->local('dbh', $dbh );
 switch_user( 1 );
 
@@ -35,31 +35,31 @@ my $tables_count = $sql->do("SHOW TABLES");
 
 if ( $ENV{DEV} || $tables_count == 0 ) {
     if ( $ENV{DEV} && $ENV{DEV_DB_CLEANUP} && $tables_count ) {
-        print "Cleanup database for developer mode... ";
+        print "正在清理开发数据库… ";
         import_sql_file( $dbh, "$ENV{SHM_ROOT_DIR}/sql/shm/shm_dev_cleanup.sql" );
-        say "done";
+        say "完成";
     }
 
-    print "Creating structure of database... ";
+    print "正在创建数据库结构… ";
     import_sql_file( $dbh, "$ENV{SHM_ROOT_DIR}/sql/shm/shm_structure.sql" );
-    say "done";
+    say "完成";
 
     if ( $ENV{DEV} ) {
-        print "Loading data for developers... ";
+        print "正在载入开发测试数据… ";
         import_sql_file( $dbh, "$ENV{SHM_ROOT_DIR}/sql/shm/shm_dev_test_data.sql" );
     } else {
-        print "Loading data... ";
+        print "正在载入初始数据… ";
         import_sql_file( $dbh, "$ENV{SHM_ROOT_DIR}/sql/shm/shm_data.sql" );
     }
     $config->id( '_shm' )->set_value( { version => $version . $version_prefix } ) if $version;
-    say "done";
+    say "完成";
 } elsif ( $version ) {
     # Start migrations
     chdir "$ENV{SHM_ROOT_DIR}/bin/migrations";
 
     my $config = $config->id( '_shm' );
     my $cur_version = $ENV{SHM_VERSION_OVERRIDE_DB} || $config->get_data->{version};
-    say "Current version: $cur_version";
+    say "数据库版本： $cur_version";
 
     # Check version format (should be like 1.2.3-abcd)
     unless ( $cur_version && $cur_version =~ /^\d+\.\d+\.\d+-.+$/ ) {
@@ -99,7 +99,7 @@ if ( $ENV{DEV} || $tables_count == 0 ) {
 
         $config->set_value( { version => $nv . $version_prefix } );
         $dbh->commit() or die "Commit failed after migration '$nv': " . ( $dbh->errstr // 'unknown error' ) . "\n";
-        say "done"
+        say "完成"
     }
 
     $config->set_value( { version => $version . $version_prefix } );

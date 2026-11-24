@@ -11,51 +11,51 @@ sub structure {
         server_id => {
             type => 'number',
             key => 1,
-            title => 'id сервера',
+            title => '服务器 ID',
         },
         server_gid => {
             type => 'number',
-            title => 'id группы',
+            title => '分组 ID',
         },
         name => {
             type => 'text',
-            title => 'имя сервера',
+            title => '服务器名称',
         },
         transport => {         # ssh,http,etc...
             type => 'text',
             enum => ['ssh','http','telegram','mail','local'],
-            title => 'транспорт',
+            title => '传输方式',
         },
         host => {
             type => 'text',
-            title => 'адрес сервера',
+            title => '服务器地址',
         },
         ip => {                # ip адрес для построения DNS
             type => 'text',
-            title => 'ip сервера',
+            title => '服务器 IP',
         },
         weight => {
             type => 'number',
-            title => 'вес сервера для выборки',
-            description => 'чем больше вес, тем выше вероятность выборки',
+            title => '选择权重',
+            description => '权重越大，选中概率越高',
         },
         success_count => {
             type => 'number',
-            title => 'не используется',
+            title => '未使用',
         },
         fail_count => {
             type => 'number',
-            title => 'не используется',
+            title => '未使用',
         },
         services_count => {
             type => 'number',
-            title => 'кол-во услуг на сервере',
+            title => '服务器上的服务数',
         },
         enabled => {
             type => 'number',
             enum => [0,1],
-            title => 'флаг включенного сервера',
-            description => '0 - выключен, 1 - включен',
+            title => '是否启用服务器',
+            description => '0 为停用，1 为启用',
         },
         settings => { type => 'json', value => {} },
     }

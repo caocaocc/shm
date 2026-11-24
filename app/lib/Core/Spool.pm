@@ -16,33 +16,33 @@ sub structure {
         id => {
             type => 'number',
             key => 1,
-            title => 'id задачи',
+            title => '任务 ID',
         },
         user_id => {
             type => 'number',
             auto_fill => 1,
-            title => 'id пользователя',
+            title => '用户 ID',
         },
         user_service_id => {
             type => 'number',
-            title => 'id услуги пользователя',
+            title => '用户服务 ID',
         },
         event => {
             type => 'json',
             value => {},
-            title => 'событие в формате JSON',
+            title => 'JSON 格式的事件',
         },
         prio => {           # приоритет команды
             type => 'number',
             default => 100,
-            title => 'приоритет команды',
-            description => 'чем выше приоритет, тем раньше выполнится задача',
+            title => '命令优先级',
+            description => '优先级越高，任务越早执行',
         },
         status => {         # status выполнения команды: 0-новая, 1-выполнена, 2-ошибка
             type => 'text',
             default => TASK_NEW,
             enum => [TASK_NEW,TASK_SUCCESS,TASK_FAIL,TASK_DELAYED,TASK_STUCK,TASK_PAUSED],
-            title => 'статус задачи',
+            title => '任务状态',
             use_for_stats => 1,
             stats_mode => 'inc',
             stats_use_when_set => 1,
@@ -50,17 +50,17 @@ sub structure {
         response => {
             type => 'json',
             value => {},
-            title => 'результат выполнения задачи',
+            title => '任务执行结果',
             readOnly => 1,
         },
         created => {        # дата создания задачи
             type => 'now',
-            title => 'дата создания задачи',
+            title => '任务创建时间',
             readOnly => 1,
         },
         executed => {       # дата и время последнего выполнения
             type => 'date',
-            title => 'дата выполнения задачи',
+            title => '任务执行时间',
             readOnly => 1,
             use_for_stats => 1,
             stats_mode => 'inc',
@@ -69,7 +69,7 @@ sub structure {
         delayed => {        # задерка в секундах
             type => 'date',
             default => 0,
-            title => 'время задержки выполнения в секундах',
+            title => '延迟执行的秒数',
             use_for_stats => 1,
             stats_mode => 'inc',
             stats_use_when_set => 1,
@@ -77,7 +77,7 @@ sub structure {
         settings => { type => 'json', value => {} },
         queue_id => {
             type  => 'number',
-            title => 'id очереди (опционально)',
+            title => '队列 ID（可选）',
         },
     }
 }

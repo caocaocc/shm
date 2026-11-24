@@ -89,13 +89,20 @@ sub db_connect {
 sub configure {
     my $dbh = shift;
 
+    my $zone = $ENV{TZ} || 'Asia/Shanghai';
+    my $valid = $zone =~ m{\A[A-Za-z][A-Za-z0-9_+/-]*\z};
+    if ($zone =~ /\A([+-])(\d\d):(\d\d)\z/) {
+        $valid = $3 < 60 && ($2 < 14 || ($1 eq '+' && $2 == 14 && $3 == 0));
+    }
+    die "无效的数据库时区，请检查 TZ\n" unless $valid;
+
     my @sql = (
         "SET transaction_isolation = 'READ-COMMITTED'",
         "SET sort_buffer_size = 256000000",
-        "SET time_zone = '$ENV{TZ}'",
     );
 
     $dbh->do( $_ ) for @sql;
+    $dbh->do('SET time_zone = ?', undef, $zone) or die "数据库时区设置失败（$zone），请检查 TZ 配置和 MySQL 时区表\n";
 }
 
 sub dbh {

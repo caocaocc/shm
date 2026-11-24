@@ -222,12 +222,12 @@ sub passwd_reset_request {
     );
 
     my $subject = $self->render_mail_text(
-        text => cfg('mail')->{reset_password}->{subject} || "$project_name - Сброс пароля",
+        text => cfg('mail')->{reset_password}->{subject} || "$project_name - 重置密码",
         vars => \%mail_vars,
     );
 
     my $message = $self->render_mail_text(
-        text => cfg('mail')->{reset_password}->{message} || "Ваша ссылка для сброса пароля: {{ link }}\n\nСсылка действительна в течение часа.",
+        text => cfg('mail')->{reset_password}->{message} || "请打开以下链接重置密码：{{ link }}\n\n链接在一小时内有效。",
         vars => \%mail_vars,
     );
 

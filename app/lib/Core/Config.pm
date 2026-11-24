@@ -20,12 +20,12 @@ sub structure {
         key => {
             type => 'text',
             key => 1,
-            title => 'ключ',
+            title => '键',
         },
         value => {
             type => 'json',
             required => 1,
-            title => 'значение',
+            title => '值',
         },
     }
 }
@@ -274,6 +274,7 @@ sub api_data_by_auth {
     }
 
     return {
+        billing => { currency => get_service('Cloud::Currency')->system_currency },
         auth => {
             enabled => ( $billing->{allow_user_auth_api} // 1 ) ? JSON::true : JSON::false,
         },

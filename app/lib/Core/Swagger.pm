@@ -38,16 +38,16 @@ sub gen_swagger_json {
             version => get_service('config')->id( '_shm' )->get_data->{'version'},
         },
         externalDocs => {
-            description => 'Документация',
+            description => '接口文档',
             url => 'https://docs.myshm.ru/docs/api',
         },
         servers => [{
             url => '/shm/v1',
         }],
         tags => [
-            { name => 'Пользователи' },
-            { name => 'Услуги' },
-            { name => 'Услуги пользователей' },
+            { name => '用户' },
+            { name => '服务' },
+            { name => '用户服务' },
         ],
         paths => {},
         components => {
@@ -391,7 +391,7 @@ sub gen_swagger_def {
     my %json;
     my %responses = (
         400 => {
-            description => 'Ошибка входных данных',
+            description => '输入数据有误',
             schema => {
                 type => 'object',
                 properties => {
@@ -407,7 +407,7 @@ sub gen_swagger_def {
             },
         },
         401 => {
-            description => 'Требуется авторизация',
+            description => '请先登录',
             schema => {
                 type => 'object',
                 properties => {
@@ -423,7 +423,7 @@ sub gen_swagger_def {
             },
         },
         403 => {
-            description => 'Ошибка доступа',
+            description => '无权访问',
             schema => {
                 type => 'object',
                 properties => {
@@ -439,7 +439,7 @@ sub gen_swagger_def {
             },
         },
         404 => {
-            description => 'Данные не найдены',
+            description => '未找到数据',
             schema => {
                 type => 'object',
                 properties => {
@@ -477,7 +477,7 @@ sub response_schema_json_list {
     my $controller = shift;
     return {
         '200' => {
-            description => 'Успешная операция',
+            description => '操作成功',
             content => {
                 'application/json' => {
                     schema => {
@@ -519,7 +519,7 @@ sub response_schema {
     my $is_plain = shift;
     return {
         '200' => {
-            description => 'Успешная операция',
+            description => '操作成功',
             content => {
                 $is_plain ? 'text/plain' : 'application/json' => {
                     schema => {
@@ -553,11 +553,11 @@ sub get_request_params {
 sub get_pagination_params {
     my %params = (
         offset => {
-            description => 'Смещение (пропуск записей)',
+            description => '偏移量（跳过的记录数）',
             default => 0,
         },
         limit => {
-            description => 'Макс. кол-во записей',
+            description => '最多返回的记录数',
             default => 25,
         },
     );

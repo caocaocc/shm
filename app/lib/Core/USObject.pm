@@ -21,18 +21,18 @@ sub structure {
         user_service_id => {
             type => 'number',
             key => 1,
-            title => 'id услуги пользоватея',
+            title => '用户服务 ID',
         },
         user_id => {
             type => 'number',
             auto_fill => 1,
             hide_for_user => 1,
-            title => 'id пользователя услуги',
+            title => '服务所属用户 ID',
         },
         service_id => {
             type => 'number',
             required => 1,
-            title => 'id услуги',
+            title => '服务 ID',
         },
         service => {
             type => 'json',
@@ -43,17 +43,17 @@ sub structure {
             default => 1,
             hide_for_user => 1,
             enum => [0,1],
-            title => 'флаг работы биллинг',
-            description => '0 - биллинг выключен для услуги, 1 - включен',
+            title => '是否启用计费',
+            description => '0 为关闭服务计费，1 为启用',
         },
         withdraw_id => {
             type => 'number',
             hide_for_user => 1,
-            title => 'id списания',
+            title => '扣款 ID',
         },
         created => {
             type => 'now',
-            title => 'дата создания услуги пользователя',
+            title => '用户服务创建日期',
             readOnly => 1,
             use_for_stats => 1,
             stats_mode => 'inc',
@@ -62,13 +62,13 @@ sub structure {
         },
         expire => {
             type => 'date',
-            title => 'дата истечения услуги пользователя',
+            title => '用户服务到期日期',
         },
         status_before => {
             type => 'text',
             default => STATUS_INIT,
             hide_for_user => 1,
-            title => 'предыдущий статус услуги',
+            title => '上一个服务状态',
             readOnly => 1,
         },
         status => {
@@ -83,34 +83,34 @@ sub structure {
                 STATUS_REMOVED,
                 STATUS_ERROR,
             ],
-            title => 'статус услуги',
+            title => '服务状态',
             readOnly => 1,
         },
         next => {
             type => 'number',
-            title => 'id следующей услуги',
-            description => '-1 - услуга будет удалена',
+            title => '下一项服务 ID',
+            description => '-1 表示将删除服务',
         },
         parent => {
             type => 'number',
-            title => 'id родительской услуги',
+            title => '父服务 ID',
         },
         category => { # virtual field (gets from join)
             type => 'text',
             allow_update_by_user => 0,
             hide_for_user => 1,
-            title => 'категория услуги',
+            title => '服务分类',
         },
         settings => {
             type => 'json',
             value => {},
             hide_for_user => 1,
-            title => 'произвольные настройки услуги',
+            title => '自定义服务设置',
         },
         description => { # virtual field
             type => 'text',
             virtual => 1,
-            title => 'заметка пользователя об услуге',
+            title => '用户对服务的备注',
         },
     };
 }

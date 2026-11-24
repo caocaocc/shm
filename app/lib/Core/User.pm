@@ -33,138 +33,138 @@ sub structure {
         user_id => {
             type => 'number',
             key => 1,
-            title => 'id пользователя',
+            title => '用户 ID',
         },
         partner_id => {
             type => 'number',
             hide_for_user => 1,
-            title => 'id партнера',
+            title => '推荐人 ID',
             use_for_stats => 1,
             stats_mode => 'inc',
             stats_use_when_add => 1,
         },
         login => {
             type => 'text',
-            title => 'логин',
+            title => '登录名',
             default => '',
-            description => 'логин для авторизации',
+            description => '用于认证的登录名',
         },
         password => {
             type => 'text',
             hide_for_user => 1,
-            title => 'пароль',
-            description => 'пароль пользователя',
+            title => '密码',
+            description => '用户密码',
         },
         type => {
             type => 'number',
             default => 0,
             hide_for_user => 1,
             enum => [0,1,2],
-            title => 'тип пользователя',
-            description => '0 - физ, 1 - юр, 2 - ип',
+            title => '用户类型',
+            description => '0 为个人，1 为企业，2 为个体经营者',
         },
         created => {
             type => 'now',
-            title => 'дата создания',
+            title => '创建日期',
             use_for_stats => 1,
             stats_mode => 'inc',
             stats_use_when_add => 1,
         },
         last_login => {
             type => 'date',
-            title => 'дата последнего входа',
+            title => '上次登录时间',
         },
         discount => {
             type => 'number',
             default => 0,
-            title => 'персональная скидка',
+            title => '个人折扣',
         },
         balance => {
             type => 'number',
             default => 0,
-            title => 'баланс',
+            title => '余额',
         },
         credit => {
             type => 'number',
             default => 0,
-            title => 'сумма кредита',
+            title => '信用额度',
         },
         comment => {
             type => 'text',
             hide_for_user => 1,
-            title => 'комментарии',
+            title => '备注',
         },
         dogovor => {
             type => 'text',
-            title => 'договор',
+            title => '合同',
         },
         block => {
             type => 'number',
             default => 0,
             hide_for_user => 1,
             enum => [0,1],
-            title => 'флаг блокировки',
-            description => '0 - активен, 1 - заблокирован',
+            title => '是否冻结',
+            description => '0 为正常，1 为冻结',
         },
         gid => {
             type => 'number',
             default => 2,
             hide_for_user => 1,
-            title => 'группа',
-            description => 'ссылка на user_groups.gid. По умолчанию 2 (обычные пользователи). 1 - системная группа админов',
+            title => '分组',
+            description => '对应 user_groups.gid，默认 2 为普通用户，1 为系统管理员组',
         },
         perm_credit => {
             type => 'number',
             default => 0,
             hide_for_user => 1,
             enum => [0,1],
-            title => 'флаг постоянного кредита',
+            title => '是否长期授信',
         },
         full_name => {
             type => 'text',
             allow_update_by_user => 1,
-            title => 'наименование клиента',
-            description => 'произвольное значение',
+            title => '客户名称',
+            description => '自定义值',
         },
         can_overdraft => {
             type => 'number',
             default => 0,
             hide_for_user => 1,
             enum => [0,1],
-            title => 'флаг разрешения ухода в минус',
-            description => '1 - разрешено уходить в минус',
+            title => '是否允许透支',
+            description => '1 表示允许透支',
         },
         bonus => {
             type => 'number',
             default => 0,
-            title => 'бонусы',
+            title => '奖励余额',
         },
         # Виртуальное поле для обратной совместимости со старой колонкой users.phone.
         # Реальные номера хранятся в accounts (тип 'phone'), см. set()/get_phone()/phones().
         phone => {
             type => 'text',
             allow_update_by_user => 1,
-            title => 'номер телефона',
+            title => '电话号码',
         },
         verified => {
             type => 'number',
             default => 0,
             hide_for_user => 1,
             enum => [0,1],
-            title => 'флаг проверки клиента',
+            title => '是否已验证客户',
         },
         create_act => {
             type => 'number',
             default => 1,
             hide_for_user => 1,
             enum => [0,1],
-            title => 'создавать акты',
+            title => '生成结算单',
         },
         settings => {
             type => 'json',
             value => {},
             hide_for_user => 1,
-            title => 'настройки клиента',
+            title => '客户设置',
         },
     };
 }
@@ -510,12 +510,12 @@ sub email_verify_code_send {
     );
 
     my $subject = $self->render_mail_text(
-        text => cfg('mail')->{email_verify}->{subject} || "$project_name - Код подтверждения email",
+        text => cfg('mail')->{email_verify}->{subject} || "$project_name - 邮箱验证码",
         vars => \%mail_vars,
     );
 
     my $message = $self->render_mail_text(
-        text => cfg('mail')->{email_verify}->{message} || "Ваш код подтверждения: {{ code }}\n\nКод действителен 10 минут.",
+        text => cfg('mail')->{email_verify}->{message} || "您的验证码为 {{ code }}。\n\n验证码在 10 分钟内有效。",
         vars => \%mail_vars,
     );
 
@@ -1298,12 +1298,12 @@ sub make_autopayment {
     my $amount = shift;
 
     unless ( $amount ) {
-        $self->logger->info("Пропускаем автоплатеж: отсутствует сумма");
+        $self->logger->info("缺少金额，已跳过自动支付");
         return 0;
     }
 
     if ( $self->get_settings->{deny_auto_payments} ) {
-        $self->logger->info("Пропускаем автоплатеж: самозапрета (легаси вариант)");
+        $self->logger->info("用户已关闭自动支付");
         return 0;
     }
 
@@ -1313,13 +1313,13 @@ sub make_autopayment {
     );
 
     unless ($auto_payments->{enabled}) {
-        $self->logger->info("Пропускаем автоплатеж: отключены в конфиге");
+        $self->logger->info("配置中已停用自动支付");
         return 0;
     }
 
     if ( my $max_amount = $auto_payments->{withdraw}->{max_amount} ) {
         if ( $amount > $max_amount ) {
-            $self->logger->info("Пропускаем автоплатеж: ограничение максимальной суммы");
+            $self->logger->info("超过自动支付限额");
             return 0;
         }
     }
@@ -1329,7 +1329,7 @@ sub make_autopayment {
             my $next_payment_date = add_period( $last_payment_date, $period );
             # Если сейчас раньше чем следующий платеж, выходим
             if ( now() lt $next_payment_date ) {
-                $self->logger->info("Пропускаем автоплатеж: следующий платеж разрешен после $next_payment_date");
+                $self->logger->info("下次可自动支付的时间为 $next_payment_date");
                 return 0;
             }
         }
@@ -1340,7 +1340,7 @@ sub make_autopayment {
 
     my %pay_systems = %{ $self->list_autopayments };
     unless (%pay_systems) {
-        $self->logger->info("Пропускаем автоплатеж: нет доступных платежных систем");
+        $self->logger->info("没有可用的自动支付方式");
         return undef;
     }
 
@@ -1371,11 +1371,11 @@ sub make_autopayment {
                     },
                 },
             });
-            $self->logger->info("Автоплатеж успешно совершен");
+            $self->logger->info("自动支付成功");
             return 1;
         }
     }
-    $self->logger->info("Автоплатеж не прошел");
+    $self->logger->info("自动支付失败");
     return 0;
 }
 

@@ -13,7 +13,7 @@ sub structure {
         spool_id => {
             type => 'number',
             required => 1,
-            title => 'id архивной задачи',
+            title => '归档任务 ID',
         },
         %{ $self->SUPER::structure },
         created => {    # use date of `spool`. Do not use `now`

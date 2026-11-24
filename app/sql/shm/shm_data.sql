@@ -11,46 +11,46 @@ INSERT INTO `accounts` VALUES
 INSERT INTO `user_groups` VALUES
 (1,'admins',1,'allow',NULL),
 (2,'users',0,'allow',NULL),
-(3,'Модератор',1,'deny','[{"uri": "/admin/user", "action": "allow", "methods": ["GET", "POST"]}, {"uri": "/admin/user/search", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/accounts", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/service", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/service/*", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/pay", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/bonus", "action": "allow", "methods": ["GET"]}]'),
-(4,'Поддержка',1,'deny','[{"uri": "/admin/user", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/search", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/accounts", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/service", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/service/*", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/pay", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/bonus", "action": "allow", "methods": ["GET"]}]'),
-(5,'Viewer',1,'deny','[{"uri": "/admin/*", "action": "allow", "methods": ["GET"]}]')
+(3,'业务管理员',1,'deny','[{"uri": "/admin/user", "action": "allow", "methods": ["GET", "POST"]}, {"uri": "/admin/user/search", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/accounts", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/service", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/service/*", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/pay", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/bonus", "action": "allow", "methods": ["GET"]}]'),
+(4,'客服',1,'deny','[{"uri": "/admin/user", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/search", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/accounts", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/service", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/service/*", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/pay", "action": "allow", "methods": ["GET"]}, {"uri": "/admin/user/bonus", "action": "allow", "methods": ["GET"]}]'),
+(5,'只读用户',1,'deny','[{"uri": "/admin/*", "action": "allow", "methods": ["GET"]}]')
 ;
 
 INSERT INTO `servers_groups` VALUES
 (default,'LOCAL','local','random',NULL),
-(default,'Email уведомления','mail','random',NULL),
-(default,'Telegram уведомления','telegram','random',NULL),
-(default,'Linux servers','ssh','random',NULL)
+(default,'邮件通知','mail','random',NULL),
+(default,'Telegram 通知','telegram','random',NULL),
+(default,'Linux 服务器','ssh','random',NULL)
 ;
 
 INSERT INTO `services` VALUES
-(default,'Тестовая услуга',0.00,1.00,'test','[]',NULL,0,NULL,NULL,1,0,NULL,0,NULL,0,0)
+(default,'测试服务',0.00,1.00,'test','[]',NULL,0,NULL,NULL,1,0,NULL,0,NULL,0,0)
 ;
 
 INSERT INTO `events` VALUES
-(default,'UserService','User password reset','user_password_reset',1,'{\"category\": \"%\", \"template_id\": \"user_password_reset\"}')
+(default,'UserService','重置用户密码','user_password_reset',1,'{\"category\": \"%\", \"template_id\": \"user_password_reset\"}')
 ;
 
 INSERT INTO `templates` VALUES
-('forecast','Уважаемый {{ user.full_name }}\n\nУведомляем Вас о сроках действия услуг:\n\n{{ FOR item IN user.pays.forecast.items }}\n- Услуга: {{ item.name }}\n  Стоимость: {{ item.total }} руб.\n  {{ IF item.expire }}\n  Истекает: {{ item.expire }}\n  {{ END }}\n{{ END }}\n\n{{ IF user.pays.forecast.dept }}\nПогашение задолженности: {{ user.pays.forecast.dept }} руб.\n{{ END }}\n\nИтого к оплате: {{ user.pays.forecast.total }} руб.\n\nУслуги, которые не будут оплачены до срока их истечения, будут приостановлены.\n\nПодробную информацию по Вашим услугам Вы можете посмотреть в вашем личном кабинете: {{ config.api.url }}\n\nЭто письмо сформировано автоматически. Если оно попало к Вам по ошибке,\nпожалуйста, сообщите об этом нам: {{ config.mail.from }}',NULL),
-('user_password_reset','Уважаемый клиент.\n\nВаш новый пароль: {{ user.set_new_passwd }}\n\nАдрес кабинета: {{ config.cli.url }}','{\"subject\": \"SHM - Восстановление пароля\"}')
+('forecast','{{ user.full_name }}，您好！\n\n以下服务即将到期：\n{{ FOR item IN user.pays.forecast.items }}\n- {{ item.name }}：{{ item.total }} {{ config.billing.currency }}{{ IF item.expire }}，到期时间 {{ item.expire }}{{ END }}\n{{ END }}\n{{ IF user.pays.forecast.dept }}待还欠款：{{ user.pays.forecast.dept }} {{ config.billing.currency }}\n{{ END }}应付合计：{{ user.pays.forecast.total }} {{ config.billing.currency }}\n\n请在服务到期前付款，以免停用。详情请登录 {{ config.cli.url }}。\n如有疑问，请联系 {{ config.mail.from }}。','{"subject":"服务续费提醒"}'),
+('user_password_reset','您的新密码为 {{ user.set_new_passwd }}。\n\n请登录用户中心：{{ config.cli.url }}','{"subject":"SHM 密码已重置"}')
 ;
 
 INSERT INTO `config` VALUES
 ("_shm", '{"version":"0.0.3", "cloud": {}}'),
-("billing",'{"type": "Simpler", "partner": {"income_percent": 0},"currency": "RUB"}'),
+("billing",'{"type": "Simpler", "partner": {"income_percent": 0},"currency": "CNY"}'),
 ("company", '{"name":"My Company LTD"}'),
 ("telegram", '{"token":""}'),
 ("api",     '{"url":"https://bill.domain.ru"}'),
 ("cli",     '{"url":"https://bill.domain.ru"}'),
-("pay_systems",'{"manual":{"name":"Платеж","show_for_client":false},"yoomoney":{"name":"ЮMoney","account":"000000000000000","secret":"","template_id":"yoomoney_template","show_for_client":true}}'),
+("pay_systems",'{"manual":{"name":"手动入账","show_for_client":false},"yoomoney":{"name":"ЮMoney","account":"000000000000000","secret":"","template_id":"yoomoney_template","show_for_client":true}}'),
 ("mail",    '{"from":"mail@domain.ru"}')
 ;
 
 INSERT INTO `spool` (id,status,user_id,event) VALUES
-(default,'NEW',1,'{"title":"Сервис для продления услуг","kind":"Jobs","method":"job_prolongate","period":"600"}'),
-(default,'NEW',1,'{"title":"Сервис для чистки данных и услуг","kind":"Jobs","method":"job_cleanup","period":"86400"}'),
-(default,'NEW',1,'{"title":"Сервис отправки прогнозов оплат","kind":"Jobs","method":"job_make_forecasts","period":"86400"}')
+(default,'NEW',1,'{"title":"服务续费","kind":"Jobs","method":"job_prolongate","period":"600"}'),
+(default,'NEW',1,'{"title":"清理服务与数据","kind":"Jobs","method":"job_cleanup","period":"86400"}'),
+(default,'NEW',1,'{"title":"发送付款预测","kind":"Jobs","method":"job_make_forecasts","period":"86400"}')
 ;
 
 COMMIT;

@@ -151,8 +151,8 @@ sub to {
 sub system_currency {
     my $self = shift;
 
-    state $currency //= get_service('config', _id => 'billing')->get_data->{currency} || 'RUB';
-    return $currency;
+    my $billing = get_service('config', _id => 'billing')->get_data;
+    return $billing->{currency} || 'CNY';
 }
 
 sub convert {

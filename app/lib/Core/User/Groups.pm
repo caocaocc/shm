@@ -16,32 +16,32 @@ sub structure {
         gid => {
             type => 'number',
             key => 1,
-            title => 'id группы',
+            title => '分组 ID',
         },
         name => {
             type => 'text',
             required => 1,
-            title => 'название группы',
+            title => '分组名称',
         },
         is_admin => {
             type => 'number',
             default => 0,
             enum => [0,1],
-            title => 'группа администраторов',
-            description => 'разрешает доступ к /admin/* (проверяется Core::User::is_admin)',
+            title => '管理员组',
+            description => '允许访问 /admin/*，由 Core::User::is_admin 检查',
         },
         default_policy => {
             type => 'text',
             default => 'allow',
             enum => ['allow','deny'],
-            title => 'политика по умолчанию',
-            description => 'решение, если ни одно правило из `rules` не совпало',
+            title => '默认策略',
+            description => '没有 rules 规则匹配时采用的决定',
         },
         rules => {
             type => 'json',
             value => undef,
-            title => 'правила',
-            description => 'массив { action: allow|deny, uri, methods }. deny всегда приоритетнее allow, независимо от порядка; порядок важен только между правилами одного action',
+            title => '规则',
+            description => '数组项包含 action（allow 或 deny）、uri 和 methods。拒绝优先，同一动作内按顺序判断。',
         },
     };
 }
