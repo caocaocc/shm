@@ -1,6 +1,7 @@
 package Core::Template;
 
 use v5.14;
+use Core::Routing::Legacy ();
 use utf8;
 use parent 'Core::Base';
 use Core::Base;
@@ -26,6 +27,13 @@ use Core::Utils qw(
 );
 
 my $dir = 'data/templates';
+
+sub get {
+    my $self = shift;
+    my $template = $self->SUPER::get(@_) or return;
+    return if Core::Routing::Legacy::retired($template->{id}, $self->{file_mode} ? $dir : undef);
+    return wantarray ? %$template : $template;
+}
 
 # Automatically create constants hash from Core::Const exports
 sub _get_constants {
@@ -281,6 +289,11 @@ sub parse_for_api {
     );
 
     delete $args{data};
+
+    if ($args{do_not_parse} && Core::Routing::Legacy::retired($args{id}) && $self->user->is_admin) {
+        my ($row) = $self->_list(id => $args{id});
+        return $row && $row->{data};
+    }
 
     my $template = $self->id( delete $args{id} );
 

@@ -1,6 +1,7 @@
 package Core::Events;
 
 use v5.14;
+use Core::Routing::Legacy ();
 use parent 'Core::Base';
 use Core::Base;
 use Core::Const;
@@ -59,6 +60,7 @@ sub get_events {
         },
     );
 
+    @res = grep { !Core::Routing::Legacy::binding($_->{settings}) } @res;
     $_->{name} = uc $_->{name} for @res;
     return wantarray ? @res : \@res;
 }

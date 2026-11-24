@@ -1,6 +1,7 @@
 package Core::Spool;
 
 use v5.14;
+use Core::Routing::Legacy ();
 use parent qw/Core::Task Core::Base/;
 use Core::Base;
 use Core::Const;
@@ -190,8 +191,17 @@ sub process_one { # for spool.pl
     return undef unless $task;
 
     my $spool = get_service('spool', _id => $task->{id} )->res( $task );
+    my $retired = Core::Routing::Legacy::binding($task->{settings}, $task->{event}{settings});
+    if ($retired && Core::Routing::Legacy::adopt($spool->dbh, $task)) {
+        $spool->res($task);
+        $retired = 0;
+    }
     # Запись факта запуска задачи в историю ДО выполнения
     $spool->write_history_start;
+    if ($retired) {
+        $spool->finish_task(status => TASK_STUCK, response => {error => 'ROUTING_TEMPLATE_RETIRED'});
+        return $spool;
+    }
 
     my $user = get_service('user', _id => $task->{user_id} );
     unless ( $user ) {

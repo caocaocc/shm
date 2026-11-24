@@ -2,6 +2,7 @@ package Core::USObject;
 
 use v5.14;
 use parent 'Core::Base';
+use Core::Routing ();
 use Core::Base;
 use Core::Const;
 use Core::Utils qw(
@@ -162,6 +163,7 @@ sub list_for_api {
     );
     $args{join} = { table => 'services', using => ['service_id'] };
     $args{where}{category} = $args{category} if $args{category};
+    $args{fields} .= ", (user_services.status='ACTIVE' AND ".Core::Routing::SCOPE_SQL().') AS routing_available';
 
     my @arr = $self->SUPER::list_for_api( %args );
     return @arr;
@@ -177,6 +179,22 @@ sub settings {
     }
 
     return $self->res->{settings}//={};
+}
+
+# Re-evaluate a saved route when the service changes tariff, status or server.
+sub set {
+    my ($self,@values)=@_;
+    my %update=get_smart_args(@values);
+    return $self->SUPER::set(%update) unless $self->id && grep {exists $update{$_}} qw(service_id status);
+    my $db=$self->dbh;
+    my $before=$db->selectrow_hashref(q{SELECT status,service_id FROM user_services WHERE user_service_id=? FOR UPDATE},undef,$self->id);
+    my $result=$self->SUPER::set(%update);
+    if ($result && $before && $before->{status} ne STATUS_REMOVED) {
+        my $changed=exists($update{status}) && $update{status} ne $before->{status}
+            || exists($update{service_id}) && $update{service_id} != $before->{service_id};
+        $self->srv('Routing')->queue_change($self->get_user_id,$self->id) if $changed;
+    }
+    return $result;
 }
 
 sub settings_save {
@@ -1017,7 +1035,11 @@ sub api_set {
         }
     }
 
-    return $self->SUPER::api_set( %args );
+    my $moves = ref($args{settings}) eq 'HASH' &&
+        ($args{settings}{server_id}//'') ne ($self->settings->{server_id}//'');
+    my $result=$self->SUPER::api_set(%args);
+    $self->srv('Routing')->queue_change($self->get_user_id,$self->id) if $moves && $result;
+    return $result;
 }
 
 sub change {

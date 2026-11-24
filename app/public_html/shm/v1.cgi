@@ -455,6 +455,22 @@ state $routes //= {
         swagger => { summary => '修改服务备注' },
     },
 },
+'/user/service/routing' => {
+    GET => {
+        controller => 'Routing', method => 'configure', private_json => 1,
+        params => { user_service_id => {type=>'integer', min=>1, required=>1} },
+        swagger => {summary=>'读取服务分流配置'},
+    },
+    POST => {
+        controller => 'Routing', method => 'configure', private_json => 1,
+        params => {
+            user_service_id => {type=>'integer', min=>1, required=>1},
+            action => {type=>'enum', enum=>[qw(save disable enable)], required=>1},
+            rules => {type=>'array'}, outbound_text => {type=>'string', max_length=>65536},
+        },
+        swagger => {summary=>'更新服务分流配置'},
+    },
+},
 '/user/service/stop' => {
     swagger => { tags => '用户服务' },
     POST => {

@@ -31,6 +31,9 @@ my $dbh = db_connect( %{ $config->file->{config}{database} } ) or die "无法连
 $config->local('dbh', $dbh );
 switch_user( 1 );
 
+require Core::Routing::Install;
+Core::Routing::Install::prepare_volume($ENV{SHM_ROOT_DIR});
+
 my $tables_count = $sql->do("SHOW TABLES");
 
 # A development reset must never discard real payment orders or measured bills.
@@ -127,6 +130,8 @@ use lib "$ENV{SHM_ROOT_DIR}/pay_systems/epay/lib";
 require SHM::Pay::Epay::Install;
 SHM::Pay::Epay::Install::bootstrap($dbh, $ENV{SHM_ROOT_DIR},
     !$tables_count || ($ENV{DEV} && $ENV{DEV_DB_CLEANUP}));
+
+Core::Routing::Install::install($dbh);
 
 # Load cloud and download paysystems and templates
 get_service('Cloud::Jobs')->startup();
